@@ -110,11 +110,68 @@ npm run build   # 产出到 web/dist/，纯静态，可直接部署
 - **打印机**：捕获打印输出，1 位位图渲染
 - **磁带机**：支持 WAV / MP3 / OGG / FLAC，自动重采样到 96kHz
 
+## 致谢
+
+这个项目建立在很多前人的工作上。以下按贡献大小排列：
+
+### 模拟器核心
+
+- **[sungbindev/famiclone](https://github.com/sungbindev/famiclone)** — Ember 模拟器原项目。
+  本项目的核心（CPU、PPU、APU、mapper、学习机机型和全部外设）完全来自这里，
+  作者 sungbin。没有它就没有这个 Web 版。**这是最需要感谢的一个项目。**
+  许可 GPL-3.0-only。
+
+### 渲染管线
+
+- **[em-fceux](https://github.com/tsone/fceux/tree/emscripten)**（作者 Valtteri "tsone" Heikkilä）—
+  3D CRT 电视机渲染管线移植自它的 `es2.cpp` / `es2util.cpp` / `meshes.h` 与着色器。
+  包括 passScreen → passDownsample → passTV → passCombine 的 pass 结构、电视机网格数据
+  （本项目的 `tvMesh.json`）、扫描线／会聚／辉光／荧光余辉的全部参数与换算公式。
+  许可 GPL-2.0-or-later。
+- **[FCEUX](https://github.com/TASEmulators/fceux)** — em-fceux 的上游，渲染思路与
+  NTSC 复合信号模拟的来源。许可 GPL-2.0。
+
+### 开发参考
+
+以下项目没有直接使用其代码，但在实现过程中提供了关键的参考与验证基准：
+
+- **[Mesen](https://github.com/SourMesen/Mesen2)** — 代码/数据标记（CDL）的位定义、
+  跟踪日志格式参考。
+- **[blargg 的测试 ROM](https://github.com/christopherpow/nes-test-roms)** — PPU 时序、
+  APU 长度计数与帧计数器复位时序用它的测试套件验证，`ppu-2c02.cpp`、`apu-2a03.cpp`
+  里多处注明「按 blargg 的 xxx 测试调定」。
+- **[NESdev Wiki](https://www.nesdev.org/wiki/)** — mapper 电路、PPU/APU 寄存器行为的
+  通用资料。
+
+### 第三方库
+
+- **[QuickJS-ng](https://github.com/quickjs-ng/quickjs)** — 插件脚本引擎。
+  Copyright (c) Fabrice Bellard、Charlie Gordon、Ben Noordhuis、Saúl Ibarra Corretgé。MIT。
+- **[nlohmann/json](https://github.com/nlohmann/json)** — JSON 处理。Copyright (c) Niels Lohmann。MIT。
+- **[miniz](https://github.com/richgel999/miniz)** — zlib 压缩。
+  Copyright (c) RAD Game Tools and Valve Software、Rich Geldreich and Tenacious Software LLC。MIT。
+
+### 工具链
+
+- **[Emscripten](https://emscripten.org/)** — 把 C++ 核心编译成 WebAssembly。
+- **[React](https://react.dev/)** / **[Vite](https://vitejs.dev/)** — 前端框架与构建工具。
+
+### 硬件资料
+
+- 各样机的 ROM 固件、软盘镜像、磁带等资料，来自散落于互联网的爱好者存档与真机dump。
+  这些资料的原始版权归各厂商所有，本项目仅用于运行与验证模拟器。
+
 ## 许可证
 
 本项目整体使用 **GPL-3.0**，见 [LICENSE](LICENSE)。
 
-原因：本项目链接并分发 GPL-3.0 的 Ember 核心（编译进同一个 `.wasm`），属于衍生作品，
-必须同样以 GPL-3.0 分发。前端代码也不例外。
+原因是本项目链接并分发两处 GPL 代码：
 
-原始 Ember 核心版权归 sungbin 所有，许可为 GPL-3.0-only。
+- **Ember 核心**（GPL-3.0-only，sungbin）—— 编译进同一个 `.wasm`，属衍生作品
+- **em-fceux 渲染管线**（GPL-2.0-or-later，Valtteri "tsone" Heikkilä）—— 其声明为
+  「GPL 第 2 版或任意更新版本」，因此可以并入 GPL-3.0 项目
+
+前端代码同样以 GPL-3.0 发布。
+
+第三方库（QuickJS-ng、nlohmann/json、miniz）为 MIT，与 GPL 兼容，各自版权与许可
+保留在原文件里，详见[致谢](#致谢)。

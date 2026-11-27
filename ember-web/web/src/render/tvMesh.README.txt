@@ -1,0 +1,15 @@
+tvMesh.json 的来源与许可
+========================
+
+本文件是 3D CRT 电视机网格数据，从 em-fceux 的 src/drivers/em/meshes.h 导出。
+
+  原项目：https://github.com/tsone/fceux/tree/emscripten/src/drivers/em
+  作者：  Valtteri "tsone" Heikkilä
+  版权：  Copyright (C) 2015 Valtteri "tsone" Heikkilä
+  许可：  GNU GPL 第 2 版或任意更新版本（GPL-2.0-or-later）
+
+导出时只做了格式转换（C 数组 → JSON 对象，字段名 screen / body 等与原版
+ES2VArray 一一对应），顶点坐标、法线、UV、索引数据未作任何修改。
+
+由于 JSON 格式不支持注释，来源与许可信息单独记录在此文件中。
+使用方请一并保留本文件。

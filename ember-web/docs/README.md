@@ -231,6 +231,11 @@ Ember Core 版权归原作者所有。Web 移植层代码按与原项目一致�
 
 ## 致谢
 
-- [sungbindev/famiclone](https://github.com/sungbindev/famiclone) - Ember 模拟器原项目
-- Emscripten 团队 - WebAssembly 编译工具链
-- QuickJS 团队 - JavaScript 引擎
+完整致谢见仓库根目录 [README.md](../../README.md#致谢)。核心几项：
+
+- [sungbindev/famiclone](https://github.com/sungbindev/famiclone) — Ember 模拟器原项目（GPL-3.0）
+- [em-fceux](https://github.com/tsone/fceux/tree/emscripten) — 3D CRT 电视机渲染管线来源，作者 Valtteri "tsone" Heikkilä（GPL-2.0-or-later）
+- [FCEUX](https://github.com/TASEmulators/fceux) — em-fceux 的上游（GPL-2.0）
+- Emscripten 团队 — WebAssembly 编译工具链
+- QuickJS-ng 团队 — 插件脚本引擎
+

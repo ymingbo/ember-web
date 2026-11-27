@@ -3,6 +3,15 @@ import tvMeshData from './tvMesh.json';
 /**
  * 3D CRT 电视机渲染器 —— 移植自 em-fceux 的 es2 渲染管线。
  *
+ * 原项目：https://github.com/tsone/fceux/tree/emscripten/src/drivers/em
+ * 作者：Valtteri "tsone" Heikkilä
+ * 版权：Copyright (C) 2015 Valtteri "tsone" Heikkilä
+ * 许可：GNU GPL 第 2 版或任意更新版本（GPL-2.0-or-later）
+ *
+ * 本文件由上述 C++ 实现改写为 TypeScript，改动包括：改用本项目自己的 WebGL
+ * 上下文与纹理管理、把 es2.cpp 的固定管线拆成可复用的 pass 方法、常量与
+ * uniform 名称保持与原版一致以便对照。算法、pass 顺序、参数取值未作改动。
+ *
  * 对照文件：
  *   src/drivers/em/es2.cpp              渲染流程 / 常量 / uniform
  *   src/drivers/em/es2util.cpp          网格构建 / 法线解码
