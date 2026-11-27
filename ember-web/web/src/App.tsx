@@ -257,6 +257,32 @@ export default function App() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  /* 面板展开后的真实高度写进 --panel-open-h。
+     max-height 若过渡到 62vh，而内容只有 400 多像素，max-height 一旦越过
+     内容高度，元素高度就被内容卡住 —— 过渡的后半段看不出变化，观感是
+     「一下子弹到位」。用实测高度做终点，动画才走满全程。
+     内容高度会变（切换机型后外设列表长短不同），所以用 ResizeObserver 跟踪。 */
+  const panelBodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = panelBodyRef.current;
+    if (!el) return;
+    const apply = () => {
+      /* 展开态高度 = 把手 24px + 内容区自然高度，上限仍受 62vh 约束 */
+      const bodyH = el.scrollHeight;
+      const cap = Math.round(window.innerHeight * 0.62);
+      const h = Math.min(bodyH + 24, cap);
+      document.documentElement.style.setProperty('--panel-open-h', h + 'px');
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    window.addEventListener('resize', apply);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', apply);
+    };
+  }, []);
   /* 窄屏时侧栏是抽屉，默认**展开**——否则用户看不到「选择 ROM」按钮，
      会以为界面缺东西。桌面端这个状态无影响（侧栏本来常驻）。
      手柄默认关闭，所以面板不需要为它让位。 */
@@ -444,17 +470,22 @@ export default function App() {
             把手必须在 aside 外面 —— 放里面会跟着面板一起滑出屏幕，
             收起后就再也点不到，没法把面板拉回来。 */}
         <div className={drawerOpen ? 'drawer open' : 'drawer'}>
-        <button
-          className="drawer-handle"
-          onClick={() => setDrawerOpen((v) => !v)}
-          aria-label={drawerOpen ? '收起面板' : '展开面板'}
-          aria-expanded={drawerOpen}
-          type="button"
-        >
-          <span className="drawer-handle-bar" />
-        </button>
-
+        {/* 把手是面板自己的第一行，和内容同属一个盒子。
+            这样展开/收起时只有「面板高度」一个量在变，把手自然跟着顶端走，
+            不需要任何位移同步。收起时面板高度收缩到只剩这一行，
+            把手仍然留在屏幕上可点，不会跟着内容滑出屏幕点不回来。 */}
         <aside className={drawerOpen ? 'sidebar open' : 'sidebar'}>
+          <button
+            className="drawer-handle"
+            onClick={() => setDrawerOpen((v) => !v)}
+            aria-label={drawerOpen ? '收起面板' : '展开面板'}
+            aria-expanded={drawerOpen}
+            type="button"
+          >
+            <span className="drawer-handle-bar" />
+          </button>
+
+          <div className="sidebar-body" ref={panelBodyRef}>
           <div className="panel">
             <h3 className="panel-title">渲染</h3>
             <div className="panel-row">
@@ -621,6 +652,7 @@ export default function App() {
                 虚拟键盘
               </label>
             )}
+          </div>
           </div>
         </aside>
         </div>

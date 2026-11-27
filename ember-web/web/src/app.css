@@ -1166,61 +1166,74 @@ input[type='range'] {
     pointer-events: none;
   }
 
+  /* 面板自己就是抽屉：把手是它的第一行，内容装在 .sidebar-body 里。
+     展开/收起只改「高度」这一个量，把手跟着顶端自然移动 ——
+     不需要任何位移同步，也不会出现把手瞬移。 */
   .sidebar {
-    position: static;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     max-width: 100%;
     /* 桌面端的固定宽度在这里必须撤掉，否则手机上抽屉会被撑到 280px 而不是满宽 */
     min-width: 0;
     max-height: 62vh;
-    flex-basis: auto;
-    flex: 0 1 auto;
     pointer-events: auto;
-    padding: 10px;
+    padding: 0;
     border-left: none;
-    /* 上沿的圆角和边框归把手那条，面板接在它下面，避免叠出两道线两层圆角 */
+    /* 上沿的圆角和边框归把手那条，避免叠出两道线两层圆角 */
     border-top: none;
     border-radius: 0;
-    overflow-y: auto;
+    overflow: hidden;
     /* 毛玻璃：半透明底 + 模糊身后画面。面板盖住屏幕时还能透出下面的颜色，
        比整块不透明更轻，也更像真机的控制面板。 */
     background: rgba(22, 27, 34, 0.72);
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
-    transition:
-      transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.18s ease;
+    transition: max-height 0.26s cubic-bezier(0.22, 1, 0.36, 1);
     z-index: 20;
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.7);
-  }
-
-  /* 收起：面板整体滑出屏幕外，不占布局高度。
-     容器是贴底的 flex 列，面板让出空间后只剩把手那一行落在屏幕底边。 */
-  .sidebar:not(.open) {
-    transform: translateY(100%);
-    opacity: 0;
-    pointer-events: none;
-    /* 让出布局空间，否则把手仍被顶在面板上方、面板空着占位 */
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    /* 收起时高度收缩到只剩把手那一行，内容被裁掉。
+       用 max-height 而不是 height：展开态的高度由内容决定（不同机型外设项数不同），
+       收起态写死 24px，两者之间做过渡即可。 */
+    max-height: 24px;
   }
 
   .sidebar.open {
-    transform: translateY(0);
-    opacity: 1;
+    /* 展开终点用实测高度（--panel-open-h，由 App 写入）；
+       实测值还没写进来时退回 62vh，保证首帧不会塌成 0。 */
+    max-height: var(--panel-open-h, 62vh);
     pointer-events: auto;
   }
 
-  /* 下栏把手：抽屉容器里的第一行，永远可见、可点。
-     面板收起来时容器只剩它这一行，于是把手贴在屏幕底边；展开时被顶到面板上沿。
+  /* 内容区：收起时不可见，避免高度过渡过程中内容从把手下面漏出来。 */
+  .sidebar:not(.open) .sidebar-body {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-body {
+    padding: 10px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    transition: opacity 0.18s ease;
+  }
+
+  /* 下栏把手：面板的第一行，永远可见、可点。
+     它在面板这个 flex 列里是 flex:0 0 auto，面板高度变化时它始终贴在最上面，
+     所以展开/收起时它跟着面板顶端一起走，不需要任何独立的位移动画。
+     收起态面板高度 = 24px，正好只有它这一行，仍然留在屏幕上可以点回来。
      用真实按钮而不是伪元素 —— 伪元素收不到点击，手指按上去会被当成画面触摸。 */
   .drawer-handle {
     display: flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
+    width: 100%;
     height: 24px;
     padding: 0;
     margin: 0;
