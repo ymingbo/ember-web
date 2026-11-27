@@ -1,7 +1,7 @@
 {
   "name": "ember-web",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Ember 模拟器的 WebAssembly 移植：在浏览器里运行 FC/NES 卡带与裕兴、步步高等学习机",
   "scripts": {

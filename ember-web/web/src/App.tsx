@@ -71,7 +71,7 @@ function useViewportHeight() {
 }
 
 /** 版本号。改这里就等于改界面右下角和自检条上的版本。 */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 /**
  * 内置机型 ROM —— 点一下直接加载开机。
