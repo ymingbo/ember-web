@@ -43,7 +43,22 @@ Emscripten 编译成 WebAssembly，前端是 React + Vite，产物是纯静态�
 
 ## 快速开始
 
-### 1. 准备工具链
+项目提供两种使用方式：**直接用现成部署包**，或者**从源码自己编译**。
+
+### 方式一：下载部署包（无需编译）
+
+到 [Releases](../../releases) 页下载最新版的 `ember-web-<版本>-dist.zip`，解压后通过任意 HTTP
+服务器打开即可。包内已含编译好的 `.wasm` 与全部机型 ROM，不需要 Emscripten、不需要 Node.js。
+
+本地起个静态服务器最省事：
+
+```bash
+unzip ember-web-1.0.0-dist.zip -d ember-web
+cd ember-web
+npx serve .          # 或 python3 -m http.server 8080
+```
+
+### 方式二：从源码编译
 
 需要 **Emscripten SDK**（3.1.62 验证过）和 **Node.js**（18 以上）。
 
@@ -52,7 +67,7 @@ git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk && ./emsdk install latest && source ./emsdk_env.sh
 ```
 
-### 2. 编译 WebAssembly 模块
+然后编译 WebAssembly 模块。**这一步必须在编译前端之前完成**：
 
 ```bash
 cd ember-web
@@ -61,7 +76,7 @@ bash scripts/build-wasm.sh
 
 产物会复制到 `web/src/ember/`（胶水 JS）和 `web/public/wasm/`（wasm 与 data）。
 
-### 3. 编译前端并运行
+最后编译前端：
 
 ```bash
 cd web
@@ -70,7 +85,15 @@ npm run dev     # 开发模式 http://localhost:5173
 npm run build   # 产出到 web/dist/，纯静态，可直接部署
 ```
 
-部署时注意 `.wasm` 要以 `application/wasm` 返回，`.data` 以 `application/octet-stream` 返回。
+### 部署注意事项
+
+- **不能直接双击 `index.html` 打开。** 浏览器在 `file://` 协议下不允许加载 `.wasm`，
+  双击只会得到一片白屏。必须通过 HTTP 访问，例如 `npx serve`、
+  `python3 -m http.server` 或任意 Web 服务器。
+- `.wasm` 必须以 `application/wasm` 返回，`.data` 以 `application/octet-stream` 返回。
+  Nginx 若在 `server` 级定义了 `types` 块，会覆盖 MIME 表导致白屏，应写在 `location` 里。
+- 项目为单线程编译，**不需要** COOP/COEP 响应头。
+- `web/dist/` 是纯静态产物，可直接丢到任意子目录部署；资源引用为相对路径。
 
 ## 支持的机型
 

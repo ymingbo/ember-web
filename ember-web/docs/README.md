@@ -105,6 +105,21 @@ npm run dev
 
 产物在 `web/dist/` 目录，可部署到任意静态文件服务器。
 
+**注意：`dist/` 不能直接双击 `index.html` 打开。** 浏览器在 `file://` 协议下不允许加载
+`.wasm`，双击只会看到白屏。必须通过 HTTP 访问：
+
+```bash
+npx serve web/dist                 # 或
+python3 -m http.server 8080 -d web/dist
+```
+
+服务器需保证 `.wasm` 以 `application/wasm` 返回、`.data` 以 `application/octet-stream`
+返回。本项目为单线程编译，不需要 COOP/COEP 响应头。
+
+如果不想自己编译，也可以直接到仓库的 Releases 页下载现成的
+`ember-web-<版本>-dist.zip`，解压后用同样的方式通过 HTTP 打开即可，包内已含
+编译好的 `.wasm` 与全部机型 ROM。
+
 ## 使用说明
 
 ### 加载 ROM
