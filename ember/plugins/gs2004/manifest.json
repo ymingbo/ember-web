@@ -1,0 +1,28 @@
+{
+  "id": "gs2004",
+  "name": "GS-2004",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "GS-2004（mapper 283）：$6000-$7FFF 固定映射 PRG 的第 32 个 8K bank（没有 PRG RAM）；$8000-$FFFF 写入值的低 3 位选 32K 的 PRG 块（共 8 块）；任何复位回到第 7 块。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 283 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg", "size": 8192, "initial": 32, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 28, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 29, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 30, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": 31, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

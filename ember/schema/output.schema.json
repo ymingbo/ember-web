@@ -1,0 +1,71 @@
+{
+  "$comment": "output 模块：声音输出的设置与画面截图。规则见 docs/04-调试服务.md 第 4.4 节。",
+  "module": "output",
+  "types": {},
+  "requests": {
+    "setAudioMode": {
+      "description": "设置声音的播放方式：real 按真实时间播放；fast 不等声卡，采样直接丢弃，设备播放静音，模拟器内部的时序不变。不保存，每次启动都是 real。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["real", "fast"], "description": "播放方式" }
+        },
+        "required": ["mode"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["real", "fast"], "description": "设置之后的播放方式" }
+        },
+        "required": ["mode"]
+      },
+      "errors": []
+    },
+    "setVolume": {
+      "description": "设置声音的音量与静音；两个参数都可以省略，省略的保持不变。音量保存到首选项的 sound.volume，核心重启后保持；静音不保存，每次启动由 sound.startMuted 决定；变化平滑过渡，不会产生爆音。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "volume": { "type": "integer", "minimum": 0, "maximum": 100, "description": "音量百分比，0 到 100" },
+          "muted": { "type": "boolean", "description": "是否静音" }
+        },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "volume": { "type": "integer", "minimum": 0, "maximum": 100, "description": "当前的音量百分比" },
+          "muted": { "type": "boolean", "description": "当前是否静音" }
+        },
+        "required": ["volume", "muted"]
+      },
+      "errors": []
+    },
+    "screenshot": {
+      "description": "截取最近一次完成的画面（256x240，暂停与断电后也有上一帧）。不带 file 时图像以二进制帧返回（结果里的 data，见 docs/04-调试服务.md 第 2.3 节）；带 file 时保存到调试输出目录下，结果里的 file 是保存后的完整路径，不再返回 data。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "format": { "type": "string", "enum": ["png", "rgba"], "description": "图像格式，默认 png；rgba 是未压缩的像素，每像素 4 字节，按行从上到下" },
+          "file": { "type": "string", "minLength": 1, "maxLength": 100, "description": "保存的文件名（不含目录，只能是字母、数字、点、下划线、短横线与空格）；png 没有扩展名时自动补 .png" }
+        },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "format": { "type": "string", "enum": ["png", "rgba"], "description": "图像格式" },
+          "width": { "type": "integer", "minimum": 1, "description": "图像宽度（像素）" },
+          "height": { "type": "integer", "minimum": 1, "description": "图像高度（像素）" },
+          "byteLength": { "type": "integer", "minimum": 1, "description": "图像数据的字节数" },
+          "file": { "type": "string", "description": "保存后的完整路径；没有带 file 参数时没有这一项" },
+          "data": { "description": "图像数据（二进制，以二进制帧送达）；带 file 参数时没有这一项" }
+        },
+        "required": ["format", "width", "height", "byteLength"]
+      },
+      "errors": ["output.noPicture", "output.invalidFileName", "output.fileFailed"]
+    }
+  },
+  "events": {}
+}

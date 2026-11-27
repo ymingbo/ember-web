@@ -1,0 +1,43 @@
+{
+  "id": "kaiser7031",
+  "name": "Kaiser KS-7031",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Kaiser KS-7031（mapper 305）：PRG 以 2K 为单位；$8000-$FFFF 的 16 个 2K 窗口上电为倒序映射（第 15 个 bank 在 $8000）；$8000-$FFFF 写入时地址位 11-12 选 $6000-$7FFF 四个 2K ROM 窗口之一并设置它的 bank；固定垂直镜像。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 305 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$67FF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "prg-6800", "bus": "cpu", "range": "$6800-$6FFF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "prg-7000", "bus": "cpu", "range": "$7000-$77FF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "prg-7800", "bus": "cpu", "range": "$7800-$7FFF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$87FF", "storage": "prg", "size": 2048, "initial": 15, "access": "r" },
+    { "id": "prg-8800", "bus": "cpu", "range": "$8800-$8FFF", "storage": "prg", "size": 2048, "initial": 14, "access": "r" },
+    { "id": "prg-9000", "bus": "cpu", "range": "$9000-$97FF", "storage": "prg", "size": 2048, "initial": 13, "access": "r" },
+    { "id": "prg-9800", "bus": "cpu", "range": "$9800-$9FFF", "storage": "prg", "size": 2048, "initial": 12, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$A7FF", "storage": "prg", "size": 2048, "initial": 11, "access": "r" },
+    { "id": "prg-a800", "bus": "cpu", "range": "$A800-$AFFF", "storage": "prg", "size": 2048, "initial": 10, "access": "r" },
+    { "id": "prg-b000", "bus": "cpu", "range": "$B000-$B7FF", "storage": "prg", "size": 2048, "initial": 9, "access": "r" },
+    { "id": "prg-b800", "bus": "cpu", "range": "$B800-$BFFF", "storage": "prg", "size": 2048, "initial": 8, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$C7FF", "storage": "prg", "size": 2048, "initial": 7, "access": "r" },
+    { "id": "prg-c800", "bus": "cpu", "range": "$C800-$CFFF", "storage": "prg", "size": 2048, "initial": 6, "access": "r" },
+    { "id": "prg-d000", "bus": "cpu", "range": "$D000-$D7FF", "storage": "prg", "size": 2048, "initial": 5, "access": "r" },
+    { "id": "prg-d800", "bus": "cpu", "range": "$D800-$DFFF", "storage": "prg", "size": 2048, "initial": 4, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$E7FF", "storage": "prg", "size": 2048, "initial": 3, "access": "r" },
+    { "id": "prg-e800", "bus": "cpu", "range": "$E800-$EFFF", "storage": "prg", "size": 2048, "initial": 2, "access": "r" },
+    { "id": "prg-f000", "bus": "cpu", "range": "$F000-$F7FF", "storage": "prg", "size": 2048, "initial": 1, "access": "r" },
+    { "id": "prg-f800", "bus": "cpu", "range": "$F800-$FFFF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "vertical"
+}

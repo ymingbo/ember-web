@@ -1,0 +1,14 @@
+{
+  "name": "QuickJS-ng",
+  "version": "0.18.0",
+  "authors": [
+    "Fabrice Bellard",
+    "Charlie Gordon",
+    "Ben Noordhuis",
+    "quickjs-ng contributors"
+  ],
+  "license": "MIT",
+  "licenseFile": "LICENSE",
+  "homepage": "https://github.com/quickjs-ng/quickjs",
+  "usage": "mapper 插件的沙箱"
+}

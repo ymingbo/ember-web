@@ -1,0 +1,121 @@
+{
+  "$comment": "debug 模块：调试服务的连接握手、事件订阅与服务状态。服务本身（WebSocket + JSON-RPC 2.0）的规则见 docs/04-调试服务.md；hello、subscribe、unsubscribe 只经调试连接处理（debugOnly），status 界面也能用。",
+  "module": "debug",
+  "types": {
+    "DebugConnection": {
+      "type": "object",
+      "description": "一个已经通过握手的调试连接。",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "description": "连接编号，本次运行内唯一" },
+        "client": { "type": "string", "description": "客户端在 hello 里自报的名称" },
+        "connectedAt": { "type": "string", "description": "握手完成的时间，UTC，ISO 8601" }
+      },
+      "required": ["id", "client", "connectedAt"]
+    }
+  },
+  "requests": {
+    "hello": {
+      "description": "握手：每条连接上第一个请求必须是它，令牌不对时连接被关闭（关闭码 4001）。成功后才能调用其他请求。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": { "type": "string", "minLength": 1, "maxLength": 64, "description": "客户端名称，如 copilot、ember-debug-cli" },
+          "token": { "type": "string", "minLength": 1, "maxLength": 128, "description": "调试服务的令牌" },
+          "protocol": { "type": "integer", "minimum": 1, "maximum": 1, "description": "客户端使用的协议版本，目前只有 1；省略时按 1" }
+        },
+        "required": ["client", "token"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "protocol": { "type": "integer", "minimum": 1, "description": "服务端的协议版本" },
+          "coreVersion": { "type": "string", "description": "核心版本" },
+          "appVersion": { "type": "string", "description": "应用版本" },
+          "session": { "type": "integer", "minimum": 1, "description": "本连接的编号" }
+        },
+        "required": ["protocol", "coreVersion", "appVersion", "session"]
+      },
+      "errors": ["debug.unauthorized", "debug.unsupportedProtocol"]
+    },
+    "subscribe": {
+      "description": "订阅事件。事件名写成“模块.事件”，也可以写“模块.*”订阅一个模块的全部事件，或“*”订阅全部；已经订阅的重复订阅没有效果。高频事件默认不推送，要订阅才有。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "events": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64 }, "minItems": 1, "maxItems": 64, "description": "事件名或通配写法" }
+        },
+        "required": ["events"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "events": { "type": "array", "items": { "type": "string" }, "description": "订阅之后本连接订阅的全部事件名或通配写法" }
+        },
+        "required": ["events"]
+      },
+      "errors": []
+    },
+    "unsubscribe": {
+      "description": "取消订阅：写法要与订阅时一致；没有订阅过的忽略。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "events": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64 }, "minItems": 1, "maxItems": 64, "description": "事件名或通配写法" }
+        },
+        "required": ["events"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "events": { "type": "array", "items": { "type": "string" }, "description": "取消之后本连接订阅的全部事件名或通配写法" }
+        },
+        "required": ["events"]
+      },
+      "errors": []
+    },
+    "status": {
+      "description": "调试服务的状态：是否开启、是否在监听、端口与当前的连接。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean", "description": "是否开启（首选项里打开，或启动参数 --debug-port 指定）" },
+          "listening": { "type": "boolean", "description": "是否正在监听；开启但端口被占用时为 false" },
+          "port": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "监听的端口，没有监听时为 0" },
+          "error": { "type": "string", "description": "开启了但没有监听时的原因；其他情况没有这一项" },
+          "connections": { "type": "array", "items": { "$ref": "#/types/DebugConnection" }, "description": "当前的连接" }
+        },
+        "required": ["enabled", "listening", "port", "connections"]
+      },
+      "errors": []
+    }
+  },
+  "events": {
+    "statusChanged": {
+      "description": "服务的状态变了：开始或停止监听、有连接建立或断开。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean", "description": "是否开启" },
+          "listening": { "type": "boolean", "description": "是否正在监听" },
+          "port": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "监听的端口，没有监听时为 0" },
+          "connections": { "type": "integer", "minimum": 0, "description": "当前的连接数" }
+        },
+        "required": ["enabled", "listening", "port", "connections"]
+      }
+    },
+    "eventsDropped": {
+      "description": "只发给订阅事件的那条连接：客户端读得太慢，事件队列已满，丢弃了若干条事件；响应不会被丢弃。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "count": { "type": "integer", "minimum": 1, "description": "自上一次通知以来丢弃的事件条数" }
+        },
+        "required": ["count"]
+      }
+    }
+  }
+}

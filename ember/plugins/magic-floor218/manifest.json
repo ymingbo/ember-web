@@ -1,0 +1,28 @@
+{
+  "id": "magic-floor218",
+  "name": "Magic Floor",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Magic Floor（mapper 218）：没有 CHR ROM，图案表与名称表用同一块 2K 显存；它按文件头的镜像方式把 $0000-$1FFF 的 8 个 1K 页与 $2000-$2FFF 的 4 个 1K 页都指向这块显存的两页（垂直、水平、单屏 A、单屏 B）；PRG 固定 32K。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 218 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "ntram", "kind": "ram", "size": 2048 }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": "ntram", "size": 1024, "initial": 0, "access": "rw" }
+  ],
+  "nametable": "custom"
+}

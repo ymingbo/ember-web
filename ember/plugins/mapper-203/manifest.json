@@ -1,0 +1,30 @@
+{
+  "id": "mapper-203",
+  "name": "Mapper 203",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "35-in-1 合集卡（mapper 203）：$8000-$FFFF 写入值右移 2 位同时选两个 16K 的 PRG 窗口，低 2 位选 8K 的 CHR bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 203 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": { "state": "register", "bank": [{ "window": "prg-8000-16k", "shift": 2, "mask": 63 },{ "window": "prg-c000-16k", "shift": 2, "mask": 63 },{ "window": "chr-0000", "shift": 0, "mask": 3 }] } }
+  ],
+  "state": [
+    { "name": "register", "bits": 8, "description": "最后写入的值（右移 2 位为 PRG bank，低 2 位为 CHR bank）" }
+  ],
+  "nametable": "header"
+}

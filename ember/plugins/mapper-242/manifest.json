@@ -1,0 +1,26 @@
+{
+  "id": "mapper-242",
+  "name": "Mapper 242",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Waixing 合集卡（mapper 242）：$8000-$FFFF 写入时地址位 3-6 选 32K 的 PRG bank，位 1 选名称表镜像（1 为水平）；任何复位回到第 0 个 bank 与垂直镜像。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 242 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

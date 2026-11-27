@@ -1,0 +1,34 @@
+{
+  "id": "bmc64in1-no-repeat",
+  "name": "BMC-64in1NoRepeat",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "64-in-1 合集卡（mapper 314）：$5000-$5003 写入四个寄存器之一，$8000-$FFFF 写入第四个寄存器；寄存器 0 的位 7 选整体模式，寄存器 1 选 16K 的 bank 与 32K 或 16K 摆法，寄存器 2 与寄存器 0 的位 1-2 拼成 8K 的 CHR bank，位 5 选名称表镜像；任何复位设为 $80、$43、0、0。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 314 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$5000-$5003", "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "reg0", "bits": 8, "description": "寄存器 0" },
+    { "name": "reg1", "bits": 8, "description": "寄存器 1" },
+    { "name": "reg2", "bits": 8, "description": "寄存器 2" },
+    { "name": "reg3", "bits": 8, "description": "寄存器 3" }
+  ],
+  "nametable": "header"
+}

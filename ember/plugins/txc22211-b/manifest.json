@@ -1,0 +1,25 @@
+{
+  "id": "txc22211-b",
+  "name": "TXC 22211 B",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "TXC 22211 B（mapper 172，JV001 芯片）：$4020-$5FFF 写入芯片（值的 6 位反序），$8000-$FFFF 锁存输出作为 8K 图案页，芯片的反相标志决定镜像（置位为垂直）；程序固定 32K。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 172 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4020-$5FFF", "read": true, "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

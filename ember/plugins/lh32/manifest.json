@@ -1,0 +1,32 @@
+{
+  "id": "lh32",
+  "name": "LH32",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "LH32（mapper 125）：$6000-$7FFF 映射 PRG ROM 的一个 8K bank（$6000 写入值选 bank）；$8000 与 $A000 固定为倒数第 4、第 3 个 bank，$C000-$DFFF 是 8K 工作 RAM，$E000 起固定为最后一个 bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 125 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "wram", "kind": "ram", "size": { "header": "prgRam", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": -4, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": -3, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "wram", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000", "write": { "state": "prgReg", "bank": [{ "window": "prg-6000" }] } }
+  ],
+  "state": [
+    { "name": "prgReg", "bits": 8, "description": "$6000 映射的 PRG bank" }
+  ],
+  "nametable": "header"
+}

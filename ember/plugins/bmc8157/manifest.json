@@ -1,0 +1,28 @@
+{
+  "id": "bmc8157",
+  "name": "BMC 8157",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "BMC 8157（mapper 301）：$8000-$FFFF 的地址（不是数据）选页：位 4-2 与位 7、8 选内层程序页，位 6-5 与位 8 选外层页，位 1 选镜像；外层位 8 为 1 且程序不超过 512K、DIP 不为 0 时程序总线无映射。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 301 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "settings": [
+    { "key": "dip", "label": "DIP 开关", "kind": "choice", "default": "0", "description": "卡带上 1 个 DIP 开关的位置。", "options": [{ "value": "0", "label": "0" },{ "value": "1", "label": "1" }] }
+  ],
+  "nametable": "header"
+}

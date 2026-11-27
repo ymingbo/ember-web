@@ -1,0 +1,45 @@
+{
+  "id": "mmc3-chr-ram",
+  "name": "MMC3 带 CHR RAM",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "MMC3 的变体（mapper 74、119、191、192、194、195）：图案页号落在某个范围里时改用 CHR RAM（各号的范围与大小不同，如 74 为页 8-9、119 为页 $40-$7F），其余仍取 CHR ROM；寄存器与 IRQ 同 MMC3。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 74 },
+    { "mapper": 119 },
+    { "mapper": 191 },
+    { "mapper": 192 },
+    { "mapper": 194 },
+    { "mapper": 195 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr" },
+    { "id": "chr-ram", "kind": "ram", "size": 8192 },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": ["chr", "chr-ram"], "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "circuits": [
+    { "id": "mmc3", "type": "mmc3", "wire": { "prg": ["prg-8000", "prg-a000", "prg-c000", "prg-e000"], "mirroring": true, "ram": "prg-ram" } }
+  ],
+  "nametable": "header"
+}

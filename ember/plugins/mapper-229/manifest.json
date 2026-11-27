@@ -1,0 +1,27 @@
+{
+  "id": "mapper-229",
+  "name": "Mapper 229",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "31-in-1 合集卡（mapper 229）：$8000-$FFFF 写入时地址低 8 位选 8K 的 CHR bank；地址位 1-4 全为 0 时 PRG 为第 0 组的 32K，否则两个 16K 窗口都映射低 5 位指定的 bank；位 5 选名称表镜像（1 为水平）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 229 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

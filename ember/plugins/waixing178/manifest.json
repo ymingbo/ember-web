@@ -1,0 +1,33 @@
+{
+  "id": "waixing178",
+  "name": "Waixing 178",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Waixing（mapper 178）：寄存器在 $4800-$4FFF，地址低 2 位选四个寄存器之一；寄存器 0 的位 0 选名称表镜像、位 1-2 选 PRG 模式，寄存器 1、2 拼成 16K 的 bank 号；寄存器 3 的低 2 位选 $6000-$7FFF 的 8K 工作 RAM 页（共 32K）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 178 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "wram", "kind": "ram", "size": { "header": "prgRam", "default": 32768 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "wram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4800-$4FFF", "write": true }
+  ],
+  "state": [
+    { "name": "reg0", "bits": 8, "description": "寄存器 0" },
+    { "name": "reg1", "bits": 8, "description": "寄存器 1" },
+    { "name": "reg2", "bits": 8, "description": "寄存器 2" },
+    { "name": "reg3", "bits": 8, "description": "寄存器 3" }
+  ],
+  "nametable": "header"
+}

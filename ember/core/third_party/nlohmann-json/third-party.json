@@ -1,0 +1,11 @@
+{
+  "name": "nlohmann/json",
+  "version": "3.12.0",
+  "authors": [
+    "Niels Lohmann"
+  ],
+  "license": "MIT",
+  "licenseFile": "LICENSE.MIT",
+  "homepage": "https://github.com/nlohmann/json",
+  "usage": "JSON 读写（单头文件）"
+}

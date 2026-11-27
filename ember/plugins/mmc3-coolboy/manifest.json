@@ -1,0 +1,39 @@
+{
+  "id": "mmc3-coolboy",
+  "name": "MMC3_Coolboy",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Coolboy 多合一卡（mapper 268）：$6000-$7FFF 写入 4 个扩展寄存器（地址低 2 位选寄存器，寄存器 3 的位 7、4 锁定），给出 PRG 与 CHR 的外层页号、掩码与固定模式；CHR 最大 256K 的 RAM；其余同 MMC3。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 268 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 262144 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$FFFF", "write": true }
+  ],
+  "circuits": [
+    { "id": "mmc3", "type": "mmc3", "wire": { "mirroring": true, "ram": "prg-ram" } }
+  ],
+  "nametable": "header"
+}

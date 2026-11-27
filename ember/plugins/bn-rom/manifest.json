@@ -1,0 +1,31 @@
+{
+  "id": "bn-rom",
+  "name": "BNROM",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "BNROM（mapper 34，没有 CHR ROM 或子 mapper 2）：PRG 整个 32K 切换，$8000-$FFFF 写入值整个作为 bank 号（超过 bank 数取模）；CHR 用 8K 的 RAM；有总线冲突。",
+  "host": ["fc"],
+  "busConflict": true,
+  "match": [
+    { "mapper": 34, "variant": 2 },
+    { "mapper": 34, "variant": 0, "chr": "none" }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": { "state": "prgBank", "bank": [{ "window": "prg-8000-32k" }] } }
+  ],
+  "state": [
+    { "name": "prgBank", "bits": 8, "description": "32K 的 PRG bank 号" }
+  ],
+  "nametable": "header"
+}

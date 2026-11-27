@@ -1,0 +1,169 @@
+{
+  "$comment": "machines 模块：整机机型（学习机）的清单、ROM 的添加与移除、整机机型开机；openRom 由外壳弹出文件选择窗口后调用 setRom；openRomDirectory 由外壳用文件管理器打开 ROM 目录。规则见 docs/04-调试服务.md 第 4.7 节。",
+  "module": "machines",
+  "types": {
+    "RomFile": {
+      "type": "object",
+      "description": "已添加的 ROM 文件：文件名与大小。",
+      "properties": {
+        "fileName": { "type": "string", "description": "文件名，不含路径" },
+        "size": { "type": "integer", "minimum": 0, "description": "文件大小（字节），等于机型的 ROM 容量" },
+        "label": { "type": "string", "description": "界面上显示的 ROM 版本：认得出的 ROM 是版本名或型号名（如 V9.0-98、98型），认不出时是文件名" }
+      },
+      "required": ["fileName", "size", "label"]
+    },
+    "RomSkipped": {
+      "type": "object",
+      "description": "从目录添加时没有添加的文件：文件名与原因。",
+      "properties": {
+        "fileName": { "type": "string", "description": "文件名，不含路径" },
+        "reason": { "type": "string", "enum": ["unrecognized", "exists", "duplicate"], "description": "原因：unrecognized 认不出是哪个机型的 ROM；exists 这个机型已经有 ROM，保持不变；duplicate 目录里有更靠前的文件已是这个机型的 ROM" }
+      },
+      "required": ["fileName", "reason"]
+    },
+    "MachineInfo": {
+      "type": "object",
+      "description": "一个机型：标识、显示名称、是否需要 ROM、是否已支持与已添加的 ROM。",
+      "properties": {
+        "id": { "type": "string", "description": "机型标识：fc、sb97、sb2000、bbg1、bbg98、pec9588、pec586、yuxing、cec1" },
+        "name": { "type": "string", "description": "显示名称" },
+        "needsRom": { "type": "boolean", "description": "是否需要 ROM；fc 为 false，其余整机机型（学习机）为 true" },
+        "supported": { "type": "boolean", "description": "是否已支持；未支持的机型不能添加 ROM，也不能开机" },
+        "rom": { "$ref": "#/types/RomFile", "description": "已添加的 ROM；没有添加、或不需要 ROM 时没有这一项" }
+      },
+      "required": ["id", "name", "needsRom", "supported"]
+    }
+  },
+  "requests": {
+    "list": {
+      "description": "机型清单，顺序固定为 fc、sb97、sb2000、bbg1、bbg98、pec9588、pec586、yuxing、cec1。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "machines": { "type": "array", "items": { "$ref": "#/types/MachineInfo" }, "description": "机型项" } },
+        "required": ["machines"]
+      },
+      "errors": []
+    },
+    "setRom": {
+      "description": "读取并检查 ROM 文件，复制进 ROM 目录（新文件写好之后才删旧文件，失败时原有的 ROM 不变）；成功后发 machines.changed。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "machine": { "type": "string", "minLength": 1, "description": "机型标识" },
+          "path": { "type": "string", "minLength": 1, "description": "ROM 文件的路径，由外壳根据用户选择的文件给出，调试服务直接给出" }
+        },
+        "required": ["machine", "path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "machine": { "$ref": "#/types/MachineInfo", "description": "更新后的机型项" } },
+        "required": ["machine"]
+      },
+      "errors": ["machines.notFound", "machines.romNotNeeded", "machines.unsupported", "machines.fileNotFound", "machines.fileUnreadable", "machines.romInvalid", "machines.romAccessFailed"]
+    },
+    "setRoms": {
+      "description": "读取目录里的 .bin 文件（不含子目录，按文件名排序），按内容的校验值认出各是哪个机型的 ROM，把还没有 ROM 的机型的 ROM 添加进来；已有 ROM 的机型保持不变，认不出的文件跳过；有添加时发 machines.changed。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "minLength": 1, "description": "目录的路径，由外壳根据用户选择的目录给出，调试服务直接给出" } },
+        "required": ["path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "added": { "type": "array", "items": { "$ref": "#/types/MachineInfo" }, "description": "添加了 ROM 的机型项（更新后）" },
+          "skipped": { "type": "array", "items": { "$ref": "#/types/RomSkipped" }, "description": "没有添加的文件" }
+        },
+        "required": ["added", "skipped"]
+      },
+      "errors": ["machines.fileNotFound", "machines.fileUnreadable", "machines.romAccessFailed"]
+    },
+    "removeRom": {
+      "description": "删除机型的 ROM 文件；没有 ROM 时没有效果也不报错；删除后发 machines.changed。",
+      "params": {
+        "type": "object",
+        "properties": { "machine": { "type": "string", "minLength": 1, "description": "机型标识" } },
+        "required": ["machine"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "machine": { "$ref": "#/types/MachineInfo", "description": "更新后的机型项" } },
+        "required": ["machine"]
+      },
+      "errors": ["machines.notFound", "machines.romNotNeeded", "machines.romAccessFailed"]
+    },
+    "boot": {
+      "description": "整机机型开机：读入已设置的 ROM，装配该机型的主机，已有的卡带与主机被替换，任何一步失败都不改动原有的；成功后发 runtime.stateChanged（原因 load），不发 cartridges.loaded。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "machine": { "type": "string", "minLength": 1, "description": "机型标识" },
+          "powerOn": { "type": "boolean", "description": "开机后是否上电，默认 true" },
+          "resume": { "type": "boolean", "description": "上电后是否直接运行，默认 true；powerOn 为 false 时无效" }
+        },
+        "required": ["machine"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "machine": { "$ref": "#/types/MachineInfo", "description": "开机的机型项" },
+          "state": { "$ref": "runtime#/types/RuntimeState" }
+        },
+        "required": ["machine", "state"]
+      },
+      "errors": ["machines.notFound", "machines.cartridgeRequired", "machines.unsupported", "machines.noRom", "machines.romInvalid", "machines.romAccessFailed"]
+    }
+  },
+  "mainRequests": {
+    "openRom": {
+      "description": "弹出系统文件选择窗口（只显示 .bin），把用户选定的文件交给 machines.setRom；用户取消选择时 canceled 为 true，不是错误。",
+      "params": {
+        "type": "object",
+        "properties": { "machine": { "type": "string", "minLength": 1, "description": "机型标识" } },
+        "required": ["machine"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "machine": { "$ref": "#/types/MachineInfo", "description": "更新后的机型项；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["machines.notFound", "machines.romNotNeeded", "machines.unsupported", "machines.fileNotFound", "machines.fileUnreadable", "machines.romInvalid", "machines.romAccessFailed"]
+    },
+    "openRoms": {
+      "description": "弹出系统选择文件夹窗口，把用户选定的目录交给 machines.setRoms；用户取消选择时 canceled 为 true，不是错误。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "added": { "type": "array", "items": { "$ref": "#/types/MachineInfo" }, "description": "添加了 ROM 的机型项；取消时没有这一项" },
+          "skipped": { "type": "array", "items": { "$ref": "#/types/RomSkipped" }, "description": "没有添加的文件；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["machines.fileNotFound", "machines.fileUnreadable", "machines.romAccessFailed"]
+    },
+    "openRomDirectory": {
+      "description": "用系统的文件管理器打开 ROM 目录（目录不存在时先创建）；路径由外壳决定，界面不能指定。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["machines.romDirectoryUnavailable"]
+    }
+  },
+  "events": {
+    "changed": {
+      "description": "整机机型的 ROM 添加、替换或移除。",
+      "data": {
+        "type": "object",
+        "properties": { "machine": { "type": "string", "description": "机型标识" } },
+        "required": ["machine"]
+      }
+    }
+  }
+}

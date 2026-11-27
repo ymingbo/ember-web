@@ -1,0 +1,11 @@
+node_modules/
+core/src/contracts/*/generated/
+win32/app/src/contracts/*/generated/
+win32/app/src/bootstrap/generated/
+coverage/
+*.log
+!core/test/data/**/*.log
+help/api/
+help/fcdev/
+help/.vitepress/cache/
+help/.vitepress/.temp/

@@ -1,0 +1,403 @@
+{
+  "$comment": "media 模块：外部设备的介质与状态。目前有软驱的盘片（插入、取出、保存、状态、故障注入）、并口打印机（状态、立即输出）与磁带机（载入、取出、播放、录音、停止、状态、定位、时间轴）；软盘文件管理以后加入。规则见 docs/04-调试服务.md 第 4.3 节。",
+  "module": "media",
+  "types": {
+    "FloppyFaults": {
+      "type": "object",
+      "description": "软驱上注入的故障；全部关闭是正常状态。",
+      "properties": {
+        "ejected": { "type": "boolean", "description": "取盘：盘片被暂时取出（镜像还在，放回后内容不变）" },
+        "noIndex": { "type": "boolean", "description": "没有索引脉冲：读扇区编号、读写与格式化命令一直不结束" },
+        "seekFail": { "type": "boolean", "description": "磁头卡住：寻道与回零不移动" },
+        "unresponsive": { "type": "boolean", "description": "控制器无响应：收到命令字节后不再处理" },
+        "badSectors": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "读时数据校验出错的逻辑扇区号" }
+      },
+      "required": ["ejected", "noIndex", "seekFail", "unresponsive", "badSectors"]
+    },
+    "FloppyStatus": {
+      "type": "object",
+      "description": "一个软驱的状态。",
+      "properties": {
+        "drive": { "type": "integer", "minimum": 0, "description": "驱动器编号，从 0 开始" },
+        "inserted": { "type": "boolean", "description": "里面有没有盘片" },
+        "fileName": { "type": "string", "description": "盘片来源的文件名，不含路径；没有盘片时没有这一项" },
+        "writeProtected": { "type": "boolean", "description": "盘片是否写保护" },
+        "modified": { "type": "boolean", "description": "镜像是否有尚未写回文件的修改（学习机写盘后置位，核心自动写回后清除）" },
+        "size": { "type": "integer", "minimum": 0, "description": "镜像的大小（字节）；没有盘片时为 0" },
+        "cylinder": { "type": "integer", "minimum": 0, "description": "磁头所在的磁道" },
+        "motor": { "type": "boolean", "description": "马达是否在转" },
+        "faults": { "$ref": "#/types/FloppyFaults" }
+      },
+      "required": ["drive", "inserted", "writeProtected", "modified", "size", "cylinder", "motor", "faults"]
+    },
+    "PrinterStatus": {
+      "type": "object",
+      "description": "并口打印机的状态。",
+      "properties": {
+        "state": { "type": "string", "enum": ["idle", "printing", "done"], "description": "状态：idle 空闲（机器没有运行，或还没有内容），printing 打印中（当前页上有内容），done 打印完成（输出过一页且下一页还没有内容）" },
+        "hasContent": { "type": "boolean", "description": "当前页上是否已经有内容" },
+        "pages": { "type": "integer", "minimum": 0, "description": "本次运行以来已输出的页数" },
+        "lastFile": { "type": "string", "description": "最近一页的文件名，不含路径；还没有输出过时没有这一项" },
+        "directory": { "type": "string", "description": "图片保存的目录（首选项“打印机”里设置的位置，留空时是用户数据目录下的 printer-output）" }
+      },
+      "required": ["state", "hasContent", "pages", "directory"]
+    },
+    "TapeStatus": {
+      "type": "object",
+      "description": "磁带机的状态。",
+      "properties": {
+        "connected": { "type": "boolean", "description": "磁带机是否接在通电的主机上（有主机并已通电，暂停也算，与主机型号无关）；没接上时可以载入与取出磁带，但不能播放与录音" },
+        "loaded": { "type": "boolean", "description": "里面有没有磁带" },
+        "fileName": { "type": "string", "description": "磁带（声音文件）的文件名，不含路径；没有磁带时没有这一项" },
+        "mode": { "type": "string", "enum": ["stopped", "playing", "recording"], "description": "工作状态：stopped 停止，playing 播放，recording 录音" },
+        "position": { "type": "number", "minimum": 0, "description": "当前位置（秒）；录音时是已录的时长" },
+        "duration": { "type": "number", "minimum": 0, "description": "总时长（秒）；不知道或没有磁带时为 0" },
+        "stereo": { "type": "boolean", "description": "是否是立体声磁带：是则左声道是声音、右声道是数据；否则整路既是声音也是数据" },
+        "serial": { "type": "integer", "minimum": 0, "description": "磁带的序号：每放入、取出或换掉一盘磁带加 1（同一个文件重新放入也加 1），时间轴据此判断读到的是不是当前这盘磁带的" }
+      },
+      "required": ["connected", "loaded", "mode", "position", "duration", "stereo", "serial"]
+    },
+    "TapeBlank": {
+      "type": "object",
+      "description": "磁带上的一段空白：数据线上连续没有声音的一段。",
+      "properties": {
+        "start": { "type": "number", "minimum": 0, "description": "起点（秒）" },
+        "end": { "type": "number", "minimum": 0, "description": "终点（秒）" }
+      },
+      "required": ["start", "end"]
+    },
+    "TapeTimeline": {
+      "type": "object",
+      "description": "磁带的时间轴：数据线上各时刻的声音大小与空白段，载入磁带后由核心在后台分析。",
+      "properties": {
+        "serial": { "type": "integer", "minimum": 0, "description": "分析的是哪一盘磁带（对应 TapeStatus 的 serial）；没有磁带时为当前的序号，其余项为空" },
+        "state": { "type": "string", "enum": ["none", "analyzing", "ready", "failed"], "description": "状态：none 没有磁带或没有可分析的内容，analyzing 分析中，ready 分析完成，failed 分析失败（文件无法读取或解码）" },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1, "description": "分析的进度，0 到 1；分析完成时为 1" },
+        "duration": { "type": "number", "minimum": 0, "description": "磁带的总时长（秒），按实际解码出的采样数算；分析完成后才有，否则为 0" },
+        "step": { "type": "number", "minimum": 0, "description": "peaks 里每一项占的时间（秒）；分析完成后才有，否则为 0" },
+        "peaks": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 100 }, "description": "数据线的声音大小：每 step 秒一项，取这段时间里的最大幅度占满幅的百分比（有声音时至少为 1）；分析完成后才有" },
+        "blanks": { "type": "array", "items": { "$ref": "#/types/TapeBlank" }, "description": "空白段，按时间排列：连续 0.5 秒以上、幅度低于满幅 3% 的一段（含磁带开头与结尾的空白）；分析完成后才有" }
+      },
+      "required": ["serial", "state", "progress", "duration", "step", "peaks", "blanks"]
+    }
+  },
+  "requests": {
+    "floppyInsert": {
+      "description": "读取盘片镜像文件（上限 16 MB）放进驱动器，替换已有的盘片；软驱是独立于主机的设备，没有主机、没有通电时也可以插入。镜像的格式由大小推断（160、180、320、360、720、1200、1440、2880 KB，其他大小按 1.44MB 处理）。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" },
+          "path": { "type": "string", "minLength": 1, "description": "镜像文件的路径" },
+          "writeProtected": { "type": "boolean", "description": "是否写保护，默认 false" }
+        },
+        "required": ["drive", "path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/FloppyStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noDrive", "media.fileNotFound", "media.fileUnreadable", "media.imageInvalid", "media.saveFailed"]
+    },
+    "floppyEject": {
+      "description": "取出盘片并丢弃镜像；有尚未写回的修改时先写回放入时的文件，写回失败则不取出；没有盘片时没有效果。",
+      "params": {
+        "type": "object",
+        "properties": { "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" } },
+        "required": ["drive"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/FloppyStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noDrive", "media.saveFailed"]
+    },
+    "floppySave": {
+      "description": "立即把驱动器里的镜像写回放入时的文件，并清除“已修改”标志；学习机写盘后核心会自动写回，通常不必调用。",
+      "params": {
+        "type": "object",
+        "properties": { "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" } },
+        "required": ["drive"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/FloppyStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noDrive", "media.noDisk", "media.saveFailed"]
+    },
+    "floppyWriteProtect": {
+      "description": "设置或取消盘片的写保护；写保护的盘片拒绝学习机写入。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" },
+          "writeProtected": { "type": "boolean", "description": "是否写保护" }
+        },
+        "required": ["drive", "writeProtected"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/FloppyStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noDrive"]
+    },
+    "floppyStatus": {
+      "description": "全部软驱的状态；软驱是独立于主机的设备，一直存在（目前只有软驱 A）。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "drives": { "type": "array", "items": { "$ref": "#/types/FloppyStatus" }, "description": "各驱动器的状态，按编号排列" } },
+        "required": ["drives"]
+      },
+      "errors": []
+    },
+    "floppyFault": {
+      "description": "故障注入：取盘、写保护、无索引脉冲、磁头卡住、控制器无响应、指定扇区校验错、全部清除；用来检查学习机程序对软驱故障的处理。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" },
+          "fault": { "type": "string", "enum": ["ejected", "writeProtected", "noIndex", "seekFail", "unresponsive", "badSector", "clear"], "description": "故障：ejected 取盘（放回时内容不变），writeProtected 写保护，noIndex 无索引脉冲，seekFail 磁头卡住，unresponsive 控制器无响应，badSector 指定扇区校验错，clear 关闭全部故障、放回盘片、取消写保护" },
+          "enabled": { "type": "boolean", "description": "打开还是关闭这个故障，默认 true；clear 不用这一项" },
+          "sector": { "type": "integer", "minimum": 0, "description": "badSector 的逻辑扇区号（磁道×每道扇区数×面数 + 磁头×每道扇区数 + 扇区号 - 1），badSector 必填" }
+        },
+        "required": ["drive", "fault"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/FloppyStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noDrive", "media.sectorRequired"]
+    },
+    "printerStatus": {
+      "description": "打印机的状态：空闲、打印中、打印完成，当前页是否有内容，已输出的页数与最近一页的文件名；还没有主机或主机没有打印机时为空闲。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/PrinterStatus" } },
+        "required": ["status"]
+      },
+      "errors": []
+    },
+    "printerFlush": {
+      "description": "立即输出当前页，等同打印机收到换页；页上的内容画成 PNG 保存到首选项“打印机”里设置的目录，成功后发 media.printed。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/PrinterStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noMachine", "media.noPrinter", "media.printerEmpty"]
+    },
+    "tapeLoad": {
+      "description": "把声音文件放进磁带机当磁带（解码由核心内置的 FFmpeg 库完成，m4a、mp3、wav 等都可以），位置回到开头，替换已有的磁带；磁带机与主机无关，没有主机、没有通电时也可以载入；磁带机播放或录音时不能载入。播放时磁带的声音（立体声取左声道，单声道取唯一的声道）经主机的声音输出播放；单声道文件整路是数据线，立体声文件右声道是数据线。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "minLength": 1, "description": "声音文件的路径" } },
+        "required": ["path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.tapeBusy", "media.fileNotFound", "media.fileUnreadable", "media.tapeUnsupported"]
+    },
+    "tapeEject": {
+      "description": "取出磁带；没有磁带时没有效果；播放或录音时先停止再取出（录音的文件先写完）。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": []
+    },
+    "tapePlay": {
+      "description": "开始播放；磁带放完后再播放从头开始；已经在播放或录音时没有效果；主机没有通电时不能播放（暂停也算通电，与主机型号无关）。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noTape", "media.tapeNotConnected"]
+    },
+    "tapeRecord": {
+      "description": "开始录音：录的是主机的声音（游戏、学习机里的声音）加主机经数据线送来的 1 位信号，与主机型号无关；给出 path 时放入一盘空白磁带，录成 32 kHz、单声道、16 位的 WAV 文件（已有的文件被覆盖）；没有 path 时在磁带机里已有的磁带上从当前位置开始录，覆盖到哪录到哪，位置之前与录音结束处之后的内容保留，录好的内容写回这盘磁带的文件，磁带文件必须是 WAV（96 kHz、16 位、立体声，新录的部分左右声道相同）；停止后这个文件自动成为磁带机里的磁带，位置停在录音停止处，可以直接播放；磁带机播放或录音时不能开始录音；主机没有通电时不能录音。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "minLength": 1, "description": "录音文件的路径；不给时在磁带机里已有的磁带上录" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.tapeBusy", "media.tapeNotConnected", "media.saveFailed", "media.noTape", "media.tapeNotWritable", "media.fileNotFound", "media.fileUnreadable", "media.tapeUnsupported"]
+    },
+    "tapeStop": {
+      "description": "停止播放或录音；录音停止时把录到的内容写完，文件成为磁带机里的磁带；已经停止时没有效果。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.fileUnreadable", "media.tapeUnsupported"]
+    },
+    "tapeStatus": {
+      "description": "磁带机的状态；磁带机一直存在，没有接在通电的主机上时 connected 为 false。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": []
+    },
+    "tapeSeek": {
+      "description": "把磁带定位到某个位置；停止与播放时都可以（播放时从新位置继续），没有通电的主机也可以；录音时不能定位；位置超过总时长按总时长。",
+      "params": {
+        "type": "object",
+        "properties": { "position": { "type": "number", "minimum": 0, "description": "位置（秒）" } },
+        "required": ["position"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/TapeStatus" } },
+        "required": ["status"]
+      },
+      "errors": ["media.noTape", "media.tapeBusy"]
+    },
+    "tapeTimeline": {
+      "description": "磁带的时间轴：载入磁带后核心在后台读一遍声音，得出数据线上各时刻的声音大小与空白段，用来在磁带上找到程序的位置；分析中只给进度，完成后给出全部内容并发 media.tapeAnalyzed；分析结果只存在内存里，取出或换磁带后作废。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "timeline": { "$ref": "#/types/TapeTimeline" } },
+        "required": ["timeline"]
+      },
+      "errors": []
+    }
+  },
+  "mainRequests": {
+    "openFloppy": {
+      "description": "弹出系统文件选择窗口（软盘镜像），把用户选定的文件交给 media.floppyInsert；用户取消选择时 canceled 为 true，不是错误。给出 droppedId 时不弹窗口，直接用拖入窗口的那个文件。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "drive": { "type": "integer", "minimum": 0, "maximum": 3, "description": "驱动器编号" },
+          "droppedId": { "type": "integer", "minimum": 1, "description": "拖入窗口的文件的编号（拖放时由外壳登记，路径只在外壳里）；不给时弹出文件选择窗口" }
+        },
+        "required": ["drive"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "status": { "$ref": "#/types/FloppyStatus", "description": "放入盘片后的驱动器状态；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["media.droppedNotFound", "media.noDrive", "media.fileNotFound", "media.fileUnreadable", "media.imageInvalid", "media.saveFailed"]
+    },
+    "openTape": {
+      "description": "弹出系统文件选择窗口（声音文件），把用户选定的文件交给 media.tapeLoad；用户取消选择时 canceled 为 true，不是错误。给出 droppedId 时不弹窗口，直接用拖入窗口的那个文件。",
+      "params": {
+        "type": "object",
+        "properties": { "droppedId": { "type": "integer", "minimum": 1, "description": "拖入窗口的文件的编号（拖放时由外壳登记，路径只在外壳里）；不给时弹出文件选择窗口" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "status": { "$ref": "#/types/TapeStatus", "description": "放入磁带后的磁带机状态；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["media.droppedNotFound", "media.tapeBusy", "media.fileNotFound", "media.fileUnreadable", "media.tapeUnsupported"]
+    },
+    "openTapeRecording": {
+      "description": "开始录音：磁带机里已有磁带时不弹窗口，直接在这盘磁带上从当前位置开始录（交给 media.tapeRecord，没有 path）；磁带机里没有磁带时弹出系统的保存文件窗口（WAV 文件），把用户选定的文件交给 media.tapeRecord；用户取消选择时 canceled 为 true，不是错误。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "status": { "$ref": "#/types/TapeStatus", "description": "开始录音后的磁带机状态；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["media.tapeBusy", "media.tapeNotConnected", "media.saveFailed", "media.noTape", "media.tapeNotWritable", "media.fileNotFound", "media.fileUnreadable", "media.tapeUnsupported"]
+    },
+    "openPrinterDirectory": {
+      "description": "用系统的文件管理器打开打印机图片的保存目录（目录不存在时先创建）；目录取自 media.printerStatus 的 directory，界面不能指定。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["media.printerDirectoryUnavailable"]
+    }
+  },
+  "events": {
+    "changed": {
+      "description": "介质的状态变化：盘片插入、取出、保存、注入故障与马达开关，磁带的载入、取出、播放、录音与停止，磁带机接上或断开主机（connected 变化时随运行状态事件刷新，不另发本事件）。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "device": { "type": "string", "enum": ["floppy", "tape"], "description": "设备" },
+          "drive": { "type": "integer", "minimum": 0, "description": "驱动器编号；磁带机恒为 0" }
+        },
+        "required": ["device", "drive"]
+      }
+    },
+    "tapeAnalyzed": {
+      "description": "磁带的时间轴分析结束（完成或失败）；用 media.tapeTimeline 读取结果。",
+      "data": {
+        "type": "object",
+        "properties": { "serial": { "type": "integer", "minimum": 0, "description": "分析的是哪一盘磁带（对应 TapeStatus 的 serial）" } },
+        "required": ["serial"]
+      }
+    },
+    "printed": {
+      "description": "打印机输出了一页：已经保存成 PNG 文件。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "fileName": { "type": "string", "description": "文件名，不含路径" },
+          "page": { "type": "integer", "minimum": 1, "description": "本次运行以来的页序号" }
+        },
+        "required": ["fileName", "page"]
+      }
+    },
+    "printFailed": {
+      "description": "打印机输出的一页无法保存（目录无法写入等），这一页已丢弃。",
+      "data": {
+        "type": "object",
+        "properties": { "message": { "type": "string", "description": "原因，面向用户" } },
+        "required": ["message"]
+      }
+    },
+    "floppySaveFailed": {
+      "description": "盘片镜像无法自动写回文件（文件被占用、没有写权限等）；修改仍在内存里，核心之后每 5 秒重试一次，写回成功前只通知这一次。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "drive": { "type": "integer", "minimum": 0, "description": "驱动器编号" },
+          "message": { "type": "string", "description": "原因，面向用户" }
+        },
+        "required": ["drive", "message"]
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "id": "racermate",
+  "name": "Racermate",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Racermate（mapper 168）：$8000-$BFFF 写入选 16K 程序页（位 7-6）与 $1000 的 4K 图案页（位 3-0），$C000 起写入使 1024 周期的计数器重新开始；计数器每 1024 个 CPU 周期触发一次 IRQ；带 64K 带电池的 CHR RAM。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 168 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "ram", "size": 65536, "battery": true }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$0FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$1FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

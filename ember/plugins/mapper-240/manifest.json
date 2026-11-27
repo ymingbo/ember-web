@@ -1,0 +1,29 @@
+{
+  "id": "mapper-240",
+  "name": "Mapper 240",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "合集卡（mapper 240）：寄存器在 $4020-$5FFF，写入值的高 4 位选 32K 的 PRG bank，低 4 位选 8K 的 CHR bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 240 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4020-$5FFF", "write": { "state": "register", "bank": [{ "window": "prg-8000-32k", "shift": 4, "mask": 15 },{ "window": "chr-0000", "shift": 0, "mask": 15 }] } }
+  ],
+  "state": [
+    { "name": "register", "bits": 8, "description": "最后写入的值（高 4 位为 PRG bank，低 4 位为 CHR bank）" }
+  ],
+  "nametable": "header"
+}

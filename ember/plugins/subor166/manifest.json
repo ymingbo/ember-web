@@ -1,0 +1,34 @@
+{
+  "id": "subor166",
+  "name": "Subor 166/167",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "小霸王合集卡（mapper 166、167）：$8000、$A000、$C000、$E000 写入四个寄存器，PRG 16K 窗口按寄存器 1 的位 3（32K 模式）、位 2（反向 UNROM 模式）或默认（UNROM 模式）摆放；mapper 167 在这三种模式下的窗口顺序互换。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 166 },
+    { "mapper": 167 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": "last", "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "reg0", "bits": 8, "description": "寄存器 0" },
+    { "name": "reg1", "bits": 8, "description": "寄存器 1" },
+    { "name": "reg2", "bits": 8, "description": "寄存器 2" },
+    { "name": "reg3", "bits": 8, "description": "寄存器 3" }
+  ],
+  "nametable": "header"
+}

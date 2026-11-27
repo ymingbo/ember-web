@@ -1,0 +1,33 @@
+{
+  "id": "mapper-226",
+  "name": "Mapper 226/233",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "合集卡（mapper 226、233）：$8000 与 $8001 写入两个寄存器，PRG 16K 的 bank 由两个寄存器拼成（寄存器 0 的位 5 为 1 时两个窗口相同，否则按 32K 一对映射），位 6 选名称表镜像（1 为垂直）；mapper 233 的每次软复位把 bank 的位 5 翻转一次；软复位清零寄存器。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 226 },
+    { "mapper": 233 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "reg0", "bits": 8, "description": "$8000 写入的寄存器" },
+    { "name": "reg1", "bits": 8, "description": "$8001 写入的寄存器" },
+    { "name": "resetFlag", "bits": 1, "description": "mapper 233：软复位翻转的 bank 位 5" }
+  ],
+  "nametable": "header"
+}

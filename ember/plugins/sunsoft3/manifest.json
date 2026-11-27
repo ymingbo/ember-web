@@ -1,0 +1,30 @@
+{
+  "id": "sunsoft3",
+  "name": "Sunsoft 3",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Sunsoft 3（mapper 67）：$8800、$9800、$A800、$B800 选 4 个 2K 图案页，$F800 选 $8000 的 16K 页（$C000 固定最后一页），$E800 选镜像；$C800 交替写 16 位计数器的高、低字节，$D800 位 4 允许计数，计数器每周期减 1，由 0 减到 $FFFF 时发出一次 IRQ。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 67 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$07FF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0FFF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$17FF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1FFF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

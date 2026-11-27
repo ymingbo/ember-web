@@ -1,0 +1,41 @@
+{
+  "id": "lh10",
+  "name": "LH10",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "LH10（mapper 522）：$8000-$BFFF 与 $E000-$FFFF 写入：偶地址选寄存器（低 3 位），奇地址写该寄存器；寄存器 6、7 选 $8000、$A000 的 8K PRG bank；$6000-$7FFF 固定映射倒数第 2 个 bank，$C000-$DFFF 是 8K 工作 RAM（可写），$E000 起固定为最后一个 bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 522 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "wram", "kind": "ram", "size": { "header": "prgRam", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "wram", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$BFFF", "write": true },
+    { "bus": "cpu", "range": "$E000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "currentRegister", "bits": 3, "description": "当前选中的寄存器号" },
+    { "name": "reg0", "bits": 8, "description": "寄存器 0" },
+    { "name": "reg1", "bits": 8, "description": "寄存器 1" },
+    { "name": "reg2", "bits": 8, "description": "寄存器 2" },
+    { "name": "reg3", "bits": 8, "description": "寄存器 3" },
+    { "name": "reg4", "bits": 8, "description": "寄存器 4" },
+    { "name": "reg5", "bits": 8, "description": "寄存器 5" },
+    { "name": "reg6", "bits": 8, "description": "寄存器 6" },
+    { "name": "reg7", "bits": 8, "description": "寄存器 7" }
+  ],
+  "nametable": "header"
+}

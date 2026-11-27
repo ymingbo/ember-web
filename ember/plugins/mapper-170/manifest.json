@@ -1,0 +1,32 @@
+{
+  "id": "mapper-170",
+  "name": "Mapper 170",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "保护卡（mapper 170）：$6502 与 $7000 写入时取写入值的位 6 放到位 7 作为寄存器；$7001 与 $7777 读出时返回寄存器（位 7）与地址高字节的低 7 位；复位清零寄存器；PRG 固定 32K，CHR 固定 8K。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 170 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6502", "write": true },
+    { "bus": "cpu", "range": "$7000", "write": true },
+    { "bus": "cpu", "range": "$7001", "read": true },
+    { "bus": "cpu", "range": "$7777", "read": true }
+  ],
+  "state": [
+    { "name": "reg", "bits": 8, "initial": 0, "description": "保护寄存器（只有位 7 有效），任何复位都清零" }
+  ],
+  "nametable": "header"
+}

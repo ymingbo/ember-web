@@ -1,0 +1,48 @@
+{
+  "id": "mapper-112",
+  "name": "Mapper 112",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "NTDEC/Asder 的 MMC3 式卡（mapper 112）：$8000 选寄存器，$A000 写寄存器，$C000 写 CHR 外层位，$E000 位 0 选名称表镜像；寄存器 0、1 选 8K 的 PRG，$C000 起固定为最后两个 bank；寄存器 2、3 选 2K 的 CHR，4-7 选 1K 的 CHR。上电为垂直镜像。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 112 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "currentReg", "bits": 3, "description": "当前选中的寄存器号" },
+    { "name": "outerChrBank", "bits": 8, "description": "CHR 外层位" },
+    { "name": "reg0", "bits": 8, "description": "寄存器 0" },
+    { "name": "reg1", "bits": 8, "description": "寄存器 1" },
+    { "name": "reg2", "bits": 8, "description": "寄存器 2" },
+    { "name": "reg3", "bits": 8, "description": "寄存器 3" },
+    { "name": "reg4", "bits": 8, "description": "寄存器 4" },
+    { "name": "reg5", "bits": 8, "description": "寄存器 5" },
+    { "name": "reg6", "bits": 8, "description": "寄存器 6" },
+    { "name": "reg7", "bits": 8, "description": "寄存器 7" }
+  ],
+  "nametable": "vertical"
+}

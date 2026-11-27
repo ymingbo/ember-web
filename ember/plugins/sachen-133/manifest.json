@@ -1,0 +1,26 @@
+{
+  "id": "sachen-133",
+  "name": "Sachen 133",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Sachen 3009/3011（mapper 133）：$4100-$FFFF 中地址满足 (地址 & $6100) = $4100 的写入有效，位 2 选 32K 的 PRG bank，低 2 位选 8K 的 CHR bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 133 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4100-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

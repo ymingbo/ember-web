@@ -1,0 +1,35 @@
+{
+  "id": "vrc1",
+  "name": "Konami VRC1",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Konami VRC1（mapper 75、151）：三个 8K 的 PRG 窗口由 $8000、$A000、$C000 选 bank，$E000 起固定为最后一个 bank；两个 4K 的 CHR 窗口的低 4 位由 $E000、$F000 写入，高位在 $9000 的位 1、位 2；$9000 的位 0 选名称表镜像（四屏接线时忽略）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 75 },
+    { "mapper": 151 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$0FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$1FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "chrBank0", "bits": 5, "description": "$0000 起 4K 的 CHR bank" },
+    { "name": "chrBank1", "bits": 5, "description": "$1000 起 4K 的 CHR bank" }
+  ],
+  "nametable": "header"
+}

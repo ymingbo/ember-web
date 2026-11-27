@@ -1,0 +1,12 @@
+{
+  "name": "miniz",
+  "version": "3.1.2",
+  "authors": [
+    "Rich Geldreich",
+    "RAD Game Tools and Valve Software"
+  ],
+  "license": "MIT",
+  "licenseFile": "LICENSE",
+  "homepage": "https://github.com/richgel999/miniz",
+  "usage": "读取插件包（zip）、编码打印机输出的 PNG"
+}

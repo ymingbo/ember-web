@@ -1,0 +1,52 @@
+{
+  "id": "daou-infosys",
+  "name": "Daou Infosys",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Daou Infosys（mapper 156）：$C000-$C00F 写入 8 个 1K CHR 窗口的低 8 位或高 8 位（地址位 2 区分），$C010 选 $8000 起 16K 的 PRG bank（$C000 起固定为最后一个 bank），$C014 位 0 选名称表镜像；上电为单屏第一页。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 156 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": "last", "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$C000-$C014", "write": true }
+  ],
+  "state": [
+    { "name": "chrLow0", "bits": 8, "description": "1K CHR 窗口 0 的低 8 位" },
+    { "name": "chrHigh0", "bits": 8, "description": "1K CHR 窗口 0 的高 8 位" },
+    { "name": "chrLow1", "bits": 8, "description": "1K CHR 窗口 1 的低 8 位" },
+    { "name": "chrHigh1", "bits": 8, "description": "1K CHR 窗口 1 的高 8 位" },
+    { "name": "chrLow2", "bits": 8, "description": "1K CHR 窗口 2 的低 8 位" },
+    { "name": "chrHigh2", "bits": 8, "description": "1K CHR 窗口 2 的高 8 位" },
+    { "name": "chrLow3", "bits": 8, "description": "1K CHR 窗口 3 的低 8 位" },
+    { "name": "chrHigh3", "bits": 8, "description": "1K CHR 窗口 3 的高 8 位" },
+    { "name": "chrLow4", "bits": 8, "description": "1K CHR 窗口 4 的低 8 位" },
+    { "name": "chrHigh4", "bits": 8, "description": "1K CHR 窗口 4 的高 8 位" },
+    { "name": "chrLow5", "bits": 8, "description": "1K CHR 窗口 5 的低 8 位" },
+    { "name": "chrHigh5", "bits": 8, "description": "1K CHR 窗口 5 的高 8 位" },
+    { "name": "chrLow6", "bits": 8, "description": "1K CHR 窗口 6 的低 8 位" },
+    { "name": "chrHigh6", "bits": 8, "description": "1K CHR 窗口 6 的高 8 位" },
+    { "name": "chrLow7", "bits": 8, "description": "1K CHR 窗口 7 的低 8 位" },
+    { "name": "chrHigh7", "bits": 8, "description": "1K CHR 窗口 7 的高 8 位" }
+  ],
+  "nametable": "single0"
+}

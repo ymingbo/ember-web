@@ -1,0 +1,53 @@
+{
+  "id": "taito-x1017",
+  "name": "Taito X1017",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Taito X1017（mapper 82、552）：寄存器在 $7EF0-$7EFF，选 CHR、名称表与三个 8K 的 PRG 窗口（mapper 552 的 bank 号位序相反），$E000 起固定为最后一个 bank；$6000-$73FF 是 5K 电池 RAM，由 $7EF7-$7EF9 写入 $CA、$69、$84 分别允许访问。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 82 },
+    { "mapper": 552 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "sram", "kind": "ram", "battery": true, "size": { "header": "prgNvram", "default": 5120 } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$03FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0400", "bus": "ppu", "range": "$0400-$07FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-0c00", "bus": "ppu", "range": "$0C00-$0FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$13FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1400", "bus": "ppu", "range": "$1400-$17FF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1BFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "chr-1c00", "bus": "ppu", "range": "$1C00-$1FFF", "storage": "chr", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "ram-6000", "bus": "cpu", "range": "$6000-$63FF", "storage": "sram", "size": 1024, "initial": 0, "access": "rw" },
+    { "id": "ram-6400", "bus": "cpu", "range": "$6400-$67FF", "storage": "sram", "size": 1024, "initial": 1, "access": "rw" },
+    { "id": "ram-6800", "bus": "cpu", "range": "$6800-$6BFF", "storage": "sram", "size": 1024, "initial": 2, "access": "rw" },
+    { "id": "ram-6c00", "bus": "cpu", "range": "$6C00-$6FFF", "storage": "sram", "size": 1024, "initial": 3, "access": "rw" },
+    { "id": "ram-7000", "bus": "cpu", "range": "$7000-$73FF", "storage": "sram", "size": 1024, "initial": 4, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$7EF0-$7EFF", "write": true }
+  ],
+  "state": [
+    { "name": "chrMode", "bits": 1, "description": "CHR 模式" },
+    { "name": "chrReg0", "bits": 8, "description": "$7EF0 写入的 CHR 寄存器" },
+    { "name": "chrReg1", "bits": 8, "description": "$7EF1 写入的 CHR 寄存器" },
+    { "name": "chrReg2", "bits": 8, "description": "$7EF2 写入的 CHR 寄存器" },
+    { "name": "chrReg3", "bits": 8, "description": "$7EF3 写入的 CHR 寄存器" },
+    { "name": "chrReg4", "bits": 8, "description": "$7EF4 写入的 CHR 寄存器" },
+    { "name": "chrReg5", "bits": 8, "description": "$7EF5 写入的 CHR 寄存器" },
+    { "name": "ramPermission0", "bits": 8, "description": "$7EF7 写入的值，$CA 时允许访问 $6000-$67FF" },
+    { "name": "ramPermission1", "bits": 8, "description": "$7EF8 写入的值，$69 时允许访问 $6800-$6FFF" },
+    { "name": "ramPermission2", "bits": 8, "description": "$7EF9 写入的值，$84 时允许访问 $7000-$73FF" }
+  ],
+  "nametable": "header"
+}

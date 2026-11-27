@@ -1,0 +1,27 @@
+{
+  "id": "kaiser7012",
+  "name": "Kaiser KS-7012",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Kaiser KS-7012（mapper 346）：PRG 整个 32K 切换，上电为第 1 个 bank；只有写 $E0A0 选第 0 个、写 $EE36 选第 1 个，其他地址的写入无效。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 346 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$E0A0", "write": true },
+    { "bus": "cpu", "range": "$EE36", "write": true }
+  ],
+  "nametable": "header"
+}

@@ -1,0 +1,32 @@
+{
+  "id": "kaiser7022",
+  "name": "Kaiser KS-7022",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Kaiser KS-7022（mapper 175）：$8000 写入的位 2 选名称表镜像，$A000 写入的低 4 位暂存为 bank 号；暂存的 bank 号在 CPU 读 $FFFC（复位向量）时才生效，同时用于两个 16K 的 PRG 窗口与 8K 的 CHR；任何复位都清零并生效。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 175 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000", "write": true },
+    { "bus": "cpu", "range": "$A000", "write": true },
+    { "bus": "cpu", "range": "$FFFC", "read": true }
+  ],
+  "state": [
+    { "name": "reg", "bits": 4, "description": "暂存的 bank 号，读 $FFFC 时生效" }
+  ],
+  "nametable": "header"
+}

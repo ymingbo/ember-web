@@ -1,0 +1,31 @@
+{
+  "id": "mapper-120",
+  "name": "Mapper 120",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Tobidase Daisakusen（mapper 120）：$8000-$FFFF 固定映射 PRG 的第 8 到第 11 个 8K bank；$41FF 写入值选 $6000-$7FFF 映射的 8K PRG ROM bank（没有 PRG RAM）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 120 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 8, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 9, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 10, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": 11, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$41FF", "write": { "state": "prgReg", "bank": [{ "window": "prg-6000" }] } }
+  ],
+  "state": [
+    { "name": "prgReg", "bits": 8, "description": "$6000 映射的 PRG bank" }
+  ],
+  "nametable": "header"
+}

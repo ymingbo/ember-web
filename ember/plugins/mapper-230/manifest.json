@@ -1,0 +1,30 @@
+{
+  "id": "mapper-230",
+  "name": "Mapper 230",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "22-in-1 合集卡（mapper 230）：上电与每次软复位在两种模式间切换：魂斗罗模式（$8000 起 16K 可切换 8 个 bank，$C000 起固定第 7 个 bank，垂直镜像）与合集模式（PRG 从第 8 个 bank 起，写入值低 5 位选 bank、位 5 选 16K 或 32K、位 6 选镜像）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 230 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "contraMode", "bits": 1, "description": "魂斗罗模式（1）或合集模式（0）" }
+  ],
+  "nametable": "header"
+}

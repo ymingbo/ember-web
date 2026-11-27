@@ -1,0 +1,868 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { MouseEventKind, MouseButtons } from '../types/ember';
+import { createTvRenderer, getLastTvError, type TvRenderer } from '../render/tvRenderer';
+
+/** 渲染路径：WebGL 走 CRT 合成，Canvas2D 走干净像素输出。 */
+export type RenderMode = 'webgl' | 'canvas2d';
+
+interface EmulatorCanvasProps {
+  getFramebuffer: () => { data: Uint8ClampedArray | null; width: number; height: number };
+  width?: number;
+  height?: number;
+  /** 是否启用鼠标输入（学习机/支持鼠标的机型） */
+  mouseEnabled?: boolean;
+  /** 鼠标事件回调：坐标已转换为 256x240 帧坐标 */
+  onMouseEvent?: (
+    kind: number,
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    buttons: number,
+    wheel: number,
+  ) => boolean;
+  /** 渲染模式，由外部状态控制；切换会重建 canvas（见下方 key 说明） */
+  mode?: RenderMode;
+  /** 每秒回报一次渲染状态，供自检条显示 */
+  onModeInfo?: (mode: RenderMode, info: string) => void;
+  /** 渲染路径出错时回报 */
+  onModeError?: (message: string) => void;
+  /**
+   * 机器是否处于通电运行状态。
+   *
+   * 关机后帧缓冲**还在**（getFramebuffer 仍返回最后一帧的数据），
+   * 所以不能用「有没有帧」判断该不该熄屏 —— 必须由外部告诉这里。
+   * 为 false 时屏幕贴图全黑，电视机边框照常渲染。
+   */
+  powered?: boolean;
+  /** 画面平滑：true 双线性，false 硬像素（默认） */
+  smooth?: boolean;
+}
+
+/**
+ * 模拟器画面：双渲染路径 + 鼠标输入转发。
+ *
+ * 渲染
+ *   Canvas2D —— putImageData，任何环境都能用，像素最锐利
+ *   WebGL    —— 纹理上传 + CRT 片元合成（扫描线/辉光/畸变/暗角/荫罩/色散）
+ *
+ * 切换模式必须换一块 canvas：同一个 canvas 一旦取了 '2d' 上下文就再也要不到
+ * 'webgl'，反之亦然。所以用 key 让它整块重建。
+ *
+ * 尺寸
+ *   canvas 的 width/height 属性固定等于帧缓冲（256x240），那是绘图缓冲。
+ *   显示尺寸完全交给 CSS 的 aspect-ratio: 4/3 + max-* 决定 —— 这里绝不写死
+ *   像素宽高，否则容器一变就拉伸变形（早先画面看着像正方形就是这个原因）。
+ *
+ * 鼠标
+ *   坐标按 canvas 的实际显示尺寸换算回 256x240 帧空间，缩放不影响精度。
+ */
+export function EmulatorCanvas({
+  getFramebuffer,
+  width = 256,
+  height = 240,
+  mouseEnabled = false,
+  onMouseEvent,
+  mode = 'webgl',
+  onModeInfo,
+  onModeError,
+  powered = false,
+  smooth = false,
+}: EmulatorCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | null>(null);
+  const imageDataRef = useRef<ImageData | null>(null);
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
+  /* 触控板模式：手指下指时的物理坐标基准点。手指位移 = 当前 - 基准，
+     累加到最后一次指针位置 —— 指针不会被拽到手指处。 */
+  const touchBaseRef = useRef<{ x: number; y: number } | null>(null);
+  /* 触摸序列进行中：浏览器会在 touch 之后合成 mousemove/mousedown，
+     坐标是**手指位置**。不屏蔽的话指针先按相对位移走一次、又被拽到手指处，
+     触控板就失效了。 */
+  const touchSequenceRef = useRef(false);
+  /* 上一次的**屏幕**坐标（物理像素），用来算真实位移 */
+  const lastScreenPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  /* ---- 指针追赶（绝对目标 + 每帧分步靠近）----
+     mousemove 只记目标，渲染循环每帧算「当前 → 目标」的差，按 C 侧
+     syncFrame 的 ±127 上限分批交出去，交多少就记多少账。
+
+     为什么必须有这一层：裕兴 MouseYuxing::syncFrame() 是
+       frameX_ = clamp(pendingX_, -128, 127);  pendingX_ = 0;
+     一帧内累加超过 127 的部分**直接丢掉**。浏览器 mousemove 有 60~240Hz，
+     而模拟器掉到 20fps 时一帧要收 3~12 条事件，累加的位移远超 127 ——
+     超出部分全丢，表现就是「指针不追 PC 指针、甩快了就停住」。
+     （之前删掉这一层是因为 fceux-web 靠满帧率 + C 侧差分就够用，
+       帧率一掉这个前提就不成立了。） */
+  const mouseGoalRef = useRef<{ x: number; y: number; buttons: number } | null>(null);
+  const mouseCurRef = useRef<{ x: number; y: number; buttons: number }>({ x: 0, y: 0, buttons: 0 });
+  /* 首次进入画面只对齐、不发送：cur 初值 (0,0)，不置这个标志会把
+     绝对坐标当位移灌给机器，指针猛冲一下。 */
+  const mouseFirstRef = useRef(true);
+  /* C 侧 syncFrame 的钳位上限，照 mouse-yuxing.cpp:27 的 DELTA_MAX = 127 */
+  const MOUSE_DELTA_MAX = 127;
+  /* 本次触摸是否发生过拖动（>10px），用来区分「点击」和「拖拽」 */
+  const touchMovedRef = useRef(false);
+  /* 本次触摸的累计位移，用于判定是否算拖动 */
+  const touchAccumRef = useRef(0);
+  /* canvas 绘制缓冲尺寸变化标记，渲染循环里据此重建投影矩阵 */
+  const sizeChangedRef = useRef(false);
+  /* 2D 路径的离屏 canvas，用于把原生帧放大铺满绘制缓冲 */
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+  /* 鼠标目标位置（帧坐标），鼠标事件更新它，渲染循环按 ±127 追过去 */
+  /* 最后一次指针的 CSS 物理坐标（clientX/clientY），touchEnd 写 goal 时要用，
+     保证 goal 永远是物理像素量纲。 */
+  /* 画面在画布内的归一化矩形（0~1），由渲染器每帧提供。
+     canvas 是 4:3 的整块，3D 电视机只占中间一块 ——
+     鼠标必须按**画面矩形**换算，不能按整块 canvas，否则外框外面的黑边也会触发移动。 */
+  const screenRectRef = useRef({ x0: 0, y0: 0, x1: 1, y1: 1 });
+  /* 关机/未开机时喂给渲染器的全黑帧，让电视机边框照常出来、屏幕是灭的 */
+  const blackFrameRef = useRef<Uint8Array | null>(null);
+  /* 指针回到画面时要用第一帧重新定位，不能让机器把绝对坐标当位移。 */
+
+  /* ------------------------------------------------------------------
+     显示尺寸：按父容器的实际像素算「能塞下的最大 4:3 盒子」。
+     CSS 里所有纯声明式写法都试过，都不行：
+       width/height:auto  → 停在属性尺寸 256x240，只占容器几个百分点
+       100%/100%          → 容器不是 4:3 时拉伸变形
+       aspect-ratio + 100% → 两个方向抢高度，比例约束被忽略
+     这里的算法最直接：宽取 min(容器宽, 容器高×4/3)，高由宽反推。
+     ------------------------------------------------------------------ */
+  const fitSize = useCallback(() => {
+    const canvas = canvasRef.current;
+    const box = canvas?.parentElement;
+    if (!canvas || !box) return;
+    // 减去 .screen-area 的内边距，避免贴边
+    const cs = getComputedStyle(box);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const availW = Math.max(1, box.clientWidth - padX);
+    const availH = Math.max(1, box.clientHeight - padY);
+    /* 画布比例完全照 fceux-web：292:240，不再坚持 4:3。
+
+       来源（em-fceux video.cpp:50-62 注释原文）：
+         学习机版不能裁 —— 裕兴主菜单最底部那行「使用鼠标和键盘选择」
+         正好落在被裁掉的下 8 行里，文字下半部分被切掉。
+         所以把 IDX_H 改成 240（全幅输出），宽高比同步改成 292:240。
+         292 是含左右 overscan 的幅面（IDX_W = 256 + 2*12 = 280，加上补边到 292）。
+
+       es2Init 里还会 aspect *= 1.04 再进 mat4Persp，这里 buildMvp 是同一条链路，
+       所以最终投影比例是 292/240 * 1.04 = 1.2653，和 fceux-web 一模一样。
+
+       之前用 4:3（1.3333）比电视机外框（1.2492）宽 6.7%，
+       外框无论怎么缩都得在左右各留一截黑边 —— 这就是「电视两边有黑边」。 */
+    const TV_ASPECT = 292 / 240;
+    const ratio = TV_ASPECT;
+    // 先按宽度撑满，若超出高度则改为按高度撑满
+    let w = availW;
+    let h = w / ratio;
+    if (h > availH) {
+      h = availH;
+      w = h * ratio;
+    }
+    // 取整避免半像素导致的模糊
+    const cssW = Math.floor(w);
+    const cssH = Math.floor(h);
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+
+    /* 关键：canvas 的**绘制缓冲**必须跟着显示尺寸走。
+       之前一直停在 256x240（等于帧缓冲原生尺寸），CSS 再把它拉到 1000px，
+       等于 256x240 的图被拉伸 4 倍显示 —— 这就是「渲染分辨率非常低」的原因。
+       3D 模型的投影视口也是按 canvas.width/height 算的，缓冲不改模型就占不满。
+
+       乘 devicePixelRatio 是为了高分屏不发虚；上限 2 倍，避免 4K 屏上
+       片元着色器（Phong + 噪声采样）把帧率拖垮。 */
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const bufW = Math.max(1, Math.round(cssW * dpr));
+    const bufH = Math.max(1, Math.round(cssH * dpr));
+
+    if (canvas.width !== bufW || canvas.height !== bufH) {
+      canvas.width = bufW;
+      canvas.height = bufH;
+      // 改缓冲尺寸会重置 WebGL 状态，渲染器要重建投影矩阵
+      sizeChangedRef.current = true;
+    }
+  }, [width, height]);
+
+  // ------------------------------------------------------------------
+  // 鼠标坐标：屏幕像素 → 256x240 帧像素
+  // ------------------------------------------------------------------
+  const screenToFrame = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      const sr = screenRectRef.current;
+
+      /* 按**画面矩形**换算，不是整块 canvas。
+
+         画布 520x390，画面只占 x 53~466 / y 30~359（414x330）。
+         之前用整块 canvas 换算，外框外面那圈黑边也被当成画面，
+         鼠标在那里动也会触发 —— 就是「触发面积比移动面积大」。
+
+         先归一化到 canvas 的 0~1，再映射到画面矩形的 0~1，最后乘帧尺寸。 */
+      const nx = (clientX - rect.left) / Math.max(1, rect.width);
+      const ny = (clientY - rect.top) / Math.max(1, rect.height);
+      const u = (nx - sr.x0) / Math.max(1e-6, sr.x1 - sr.x0);
+      const v = (ny - sr.y0) / Math.max(1e-6, sr.y1 - sr.y0);
+
+      return {
+        x: Math.max(0, Math.min(width - 1, u * width)),
+        y: Math.max(0, Math.min(height - 1, v * height)),
+      };
+    },
+    [width, height],
+  );
+
+  /* screenToFrame 的**严格逆运算**：帧坐标 → 画面矩形内的归一化位置。
+     圆圈和指针必须共用这一套映射，各算一套必然对不上。 */
+  const frameToScreenRect = useCallback(
+    (fx: number, fy: number): { u: number; v: number } => {
+      const sr = screenRectRef.current;
+      const u = sr.x0 + (fx / Math.max(1, width)) * (sr.x1 - sr.x0);
+      const v = sr.y0 + (fy / Math.max(1, height)) * (sr.y1 - sr.y0);
+      return { u, v };
+    },
+    [width, height],
+  );
+
+  /* 判断指针是否落在画面矩形内。在画面外就不发位移。 */
+  const isInsideScreen = useCallback((clientX: number, clientY: number): boolean => {
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    const rect = canvas.getBoundingClientRect();
+    const sr = screenRectRef.current;
+    const nx = (clientX - rect.left) / Math.max(1, rect.width);
+    const ny = (clientY - rect.top) / Math.max(1, rect.height);
+    return nx >= sr.x0 && nx <= sr.x1 && ny >= sr.y0 && ny <= sr.y1;
+  }, []);
+
+  const mapButtons = useCallback((e: React.MouseEvent): number => {
+    let bits = 0;
+    if (e.button === 0) bits |= MouseButtons.LEFT;
+    if (e.button === 2) bits |= MouseButtons.RIGHT;
+    if (e.button === 1) bits |= MouseButtons.MIDDLE;
+    return bits;
+  }, []);
+
+  /* 鼠标移动：攒增量，每帧提交一次（见下方 render 里的 flushMouse）。
+
+     这里有两个坑，都踩过了：
+       1. 增量必须用**屏幕像素差**，不能用换算到 256x240 帧坐标后的差。
+          按帧坐标算的话，画布放大到 1077px 宽时物理位移被压缩 4 倍，
+          指针自然跟不上手 —— 这就是「鼠标移动太慢」的直接原因。
+       2. 机器侧 syncFrame() 每帧把累积量钳到 ±127（8 位有符号），
+          一次提交超过 127 的部分会被削掉。所以提交时按 100 一档拆分。
+     绝对坐标 x/y 仍按帧坐标给（用于按下判定），位移用物理像素。 */
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (touchSequenceRef.current) return;   // 触摸序列中的合成事件，忽略
+      if (!mouseEnabled || !onMouseEvent) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      /* 先取上一次的物理坐标（用来算物理差值），**算完差之后再更新**。
+         写成先更新会让差值永远为 0，指针完全不动。 */
+      const prevScreen = lastScreenPosRef.current;
+      lastScreenPosRef.current = { x: e.clientX, y: e.clientY };
+      // 指针位置换算成画面内的标准帧坐标（0~255），和 fceux 的 0..255 同一量纲
+      const { x, y } = screenToFrame(e.clientX, e.clientY);
+
+      /* 指针在画面矩形外（外框外面那圈黑边）就不发位移。 */
+      if (!isInsideScreen(e.clientX, e.clientY)) {
+        mouseGoalRef.current = null;
+        mouseFirstRef.current = true;   // 离开画面后重新进入要重新对齐
+        if (onMouseEvent) {
+          onMouseEvent(MouseEventKind.LEAVE, x, y, 0, 0, 0, 0);
+        }
+        return;
+      }
+
+      /* ---- 指针位置推进：物理像素差 × scaleX ----
+         这是「鼠标跟不上手」的真正根因，老版本一直没修对：
+           dx = x - prev.x   ← 两个都是**帧坐标**，画布 892px 宽时
+           物理移动 100px 只换来帧坐标 29px 的差，指针慢 3 倍，而且
+           快慢都慢（不是被 clamp 削峰，是每步都缩水）。
+
+         正确做法：物理像素差 × scaleX 换算到帧空间。
+         scaleX 必须按**画面矩形**的实际像素宽算，不能用整块 canvas ——
+         3D 模式下画面只占中间一块，用 canvas 宽度会让 pointer 走得更慢。 */
+      if (canvas && prevScreen) {
+        const rect = canvas.getBoundingClientRect();
+        const sr = screenRectRef.current;
+        const screenPxW = Math.max(1, (sr.x1 - sr.x0) * rect.width);
+        const screenPxH = Math.max(1, (sr.y1 - sr.y0) * rect.height);
+
+        /* ---- 不缩放：物理像素差即帧位移 ----
+           照 fceux 的 M169.h / YuXingMouse 做法：它每次 ROM 读鼠标包时
+           InitPos() 记录鼠标位置、算出**相对窗口中心的偏移**，
+           再 SetCursorPos 把鼠标钉回中心；偏移直接以 7 位有符号数
+           (±127) 打进数据包，(cx & 0x7f)，**全程没有任何缩放**。
+           窗口比 256x240 画面大好几倍，它也不换算 —— 鼠标走 1 屏像素，
+           光标就走 1 帧像素。
+
+           按 width/screenPxW 折算会让光标比手慢 3 倍（大画布上），
+           就是之前「追不上、甩不动」的观感。这里取 1，与 fceux 一致。 */
+        const scaleX = 1;
+        const scaleY = 1;
+
+        /* 物理像素差 × 折算比 = 本次事件应在帧空间推进的量 */
+        const rawDx = (e.clientX - prevScreen.x) * scaleX;
+        const rawDy = (e.clientY - prevScreen.y) * scaleY;
+
+        /* 自检读数：scaleX 与实际推进量，用于确认折算比是否正确 */
+        (window as unknown as { __ptr?: unknown }).__ptr = {
+          scaleX: +scaleX.toFixed(4), scaleY: +scaleY.toFixed(4),
+          screenPxW: +screenPxW.toFixed(1), screenPxH: +screenPxH.toFixed(1),
+          rawDx: +rawDx.toFixed(2), rawDy: +rawDy.toFixed(2),
+          w: width, h: height,
+        };
+        const base = mouseGoalRef.current ?? { x, y, buttons: e.buttons };
+        mouseGoalRef.current = {
+          x: Math.max(0, Math.min(width - 1, base.x + rawDx)),
+          y: Math.max(0, Math.min(height - 1, base.y + rawDy)),
+          buttons: e.buttons,
+        };
+      } else {
+        /* 首帧没有物理基准：用绝对位置对齐 */
+        mouseGoalRef.current = { x, y, buttons: e.buttons };
+      }
+    },
+    [mouseEnabled, onMouseEvent, screenToFrame, isInsideScreen],
+  );
+
+  /* PC 鼠标点击 —— 必须和触摸路径一样，UP 延后到下一帧再发。
+
+     裕兴读鼠标包要走 $4016 的时钟位（MouseYuxing::write 移位），
+     而按键状态由 MouseYuxing::syncFrame 每帧锁存到 frameButtons_，
+     loadPacket 才把锁存值打进包里。
+
+     PC 鼠标按下抬起几乎是同一时刻（同一次事件循环里），
+     DOWN 之后紧接着 UP，buttons_ 在 syncFrame 之前就被 0 覆盖了，
+     程序采到的永远是「没按下」—— 表现就是点不动、开机动画跳不过去。
+     触摸板之所以没事，是因为 handleTouchEnd 里用了 setTimeout(120) 延后发 UP。
+
+     这里照抄同样的做法：DOWN 立刻发，UP 由定时器跨帧发。 */
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (touchSequenceRef.current) return;   // 触摸序列中的合成事件，忽略
+      if (!mouseEnabled || !onMouseEvent) return;
+      e.preventDefault();
+      const { x, y } = screenToFrame(e.clientX, e.clientY);
+      lastMousePosRef.current = { x, y };
+      /* 按下时让追赶的当前值跟上目标：点击落点就是指针所在处，
+         不让它在按下之后还回头追一段。 */
+      mouseCurRef.current = { x, y, buttons: mapButtons(e) };
+      mouseGoalRef.current = { x, y, buttons: mapButtons(e) };
+      onMouseEvent(MouseEventKind.DOWN, x, y, 0, 0, mapButtons(e), 0);
+      /* 左键按下时要补一次跨帧抬起（触摸板靠 touchEnd 补，鼠标没有这一步）。
+         只对左键补，右键/中键的语义是长按不放。 */
+      if ((e.buttons & 1) !== 0) {
+        window.setTimeout(() => {
+          onMouseEvent(MouseEventKind.UP, x, y, 0, 0, 0, 0);
+        }, 120);
+      }
+    },
+    [mouseEnabled, onMouseEvent, screenToFrame, mapButtons],
+  );
+
+  const handleMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (touchSequenceRef.current) return;   // 触摸序列中的合成事件，忽略
+      if (!mouseEnabled || !onMouseEvent) return;
+      const { x, y } = screenToFrame(e.clientX, e.clientY);
+      lastMousePosRef.current = { x, y };
+      mouseCurRef.current = { x, y, buttons: 0 };
+      mouseGoalRef.current = { x, y, buttons: 0 };
+      /* 真实的抬起事件：如果 120ms 内已经由定时器补过 UP，这里再发一次也不会
+         造成问题（buttons_ 置 0 是幂等的）。长按场景靠它。 */
+      onMouseEvent(MouseEventKind.UP, x, y, 0, 0, 0, 0);
+    },
+    [mouseEnabled, onMouseEvent, screenToFrame],
+  );
+
+  const handleMouseLeave = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (touchSequenceRef.current) return;   // 触摸序列中的合成事件，忽略
+      if (!mouseEnabled || !onMouseEvent) return;
+      const { x, y } = screenToFrame(e.clientX, e.clientY);
+      lastMousePosRef.current = null;
+      /* 离开画面：清目标并重置首帧标志，下次进入重新对齐，
+         否则 cur 停在旧位置，一进来就会朝新目标猛追一段 */
+      mouseGoalRef.current = null;
+      mouseFirstRef.current = true;
+      onMouseEvent(MouseEventKind.LEAVE, x, y, 0, 0, 0, 0);
+    },
+    [mouseEnabled, onMouseEvent, screenToFrame],
+  );
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<HTMLCanvasElement>) => {
+      if (!mouseEnabled || !onMouseEvent) return;
+      e.preventDefault();
+      const { x, y } = screenToFrame(e.clientX, e.clientY);
+      onMouseEvent(MouseEventKind.WHEEL, x, y, 0, 0, e.buttons, e.deltaY);
+    },
+    [mouseEnabled, onMouseEvent, screenToFrame],
+  );
+
+  /* ------------------------------------------------------------------
+     触摸板
+     ------------------------------------------------------------------
+     手机没有鼠标，但裕兴/步步高的菜单要靠指针点。做法和 fceux-web 一致：
+     维护一个「虚拟指针」坐标，手指在画面上拖动时按位移移动它，然后走
+     和鼠标完全相同的通路（onMouseEvent），保证行为和 PC 一致。
+
+     必须 setPointerCapture：手指滑出 canvas 边界（比如拖到面板上）时
+     仍要继续收事件，否则拖动会中途断掉。
+     触摸期间同时屏蔽浏览器派发的模拟鼠标事件，否则两套都送会让
+     位移翻倍、指针跑得比手指快一倍。
+     ------------------------------------------------------------------ */
+  const [touchPointer, setTouchPointer] = useState<{ x: number; y: number } | null>(null);
+
+  /* 虚拟指针的屏幕坐标：canvas 在页面上的位置 + 帧坐标按显示尺寸放大。
+     每秒随 rAF 重算一次即可（拖动时 React 每次都会重渲染）。 */
+  const cursorStyle = (() => {
+    if (!touchPointer) return undefined;
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const r = canvas.getBoundingClientRect();
+    const box = canvas.parentElement?.getBoundingClientRect();
+    if (!box) return undefined;
+    /* 帧坐标 → 画面矩形内的归一化位置 → canvas 像素。
+       之前直接用 (touchPointer.x / width) * r.width，等于按**整块 canvas** 铺开，
+       而画面只占中间一块（外框内腔）。结果手指还没到画面边，圆圈已经跑出画布 ——
+       看起来就是"撞到无形的墙"。必须和 screenToFrame 用同一个画面矩形。 */
+    const { u, v } = frameToScreenRect(touchPointer.x, touchPointer.y);
+    return {
+      // 转成相对父容器的像素，父容器是 .screen-area（position:relative）
+      left: `${r.left - box.left + u * r.width}px`,
+      top: `${r.top - box.top + v * r.height}px`,
+    };
+  })();
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (!mouseEnabled || !onMouseEvent || e.touches.length !== 1) return;
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.setPointerCapture?.(e.touches[0].identifier);
+
+      const touch = e.touches[0];
+      // 手指落在画面外（外框黑边）不算操作
+      if (!isInsideScreen(touch.clientX, touch.clientY)) return;
+      touchMovedRef.current = false;
+      touchAccumRef.current = 0;
+      /* 触控板模式：下指只是"把手放上触摸板"，指针不动。
+         这里只记下手指的物理坐标当基准，不往机器发任何东西。 */
+      touchBaseRef.current = { x: touch.clientX, y: touch.clientY };
+      touchSequenceRef.current = true;
+      /* 手指可能落在画面任意位置，和上一次没有连续性 ——
+         追赶层必须重新对齐，否则会朝上一个鼠标目标猛追一段。 */
+      mouseGoalRef.current = null;
+      mouseFirstRef.current = true;
+      /* 圆圈代表**光标**位置，不是手指位置。下指时就把圆圈显示在光标
+         当前所在处，让用户先看到"点会落在哪"，再决定往哪拖。
+         lastMousePosRef 初始是 null（只有鼠标移动或拖动过才有值），
+         此时光标还没在任何地方 —— 用画面中心当初始位置，
+         和 handleTouchMove 里 prev 的兜底值保持一致。 */
+      {
+        const cur = lastMousePosRef.current ?? { x: width / 2, y: height / 2 };
+        if (!lastMousePosRef.current) lastMousePosRef.current = cur;
+        setTouchPointer({ x: cur.x, y: cur.y });
+      }
+    },
+    [mouseEnabled, isInsideScreen, width, height],
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (!mouseEnabled || !onMouseEvent || e.touches.length !== 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      if (!isInsideScreen(touch.clientX, touch.clientY)) return;
+
+      const base = touchBaseRef.current;
+      if (!base) return;
+
+      /* 触控板模式：手指位移换算成画面位移，**累加到指针当前位置**。
+         指针不会跳到手指底下，只按手指挪了多少走多少。 */
+      const dx = touch.clientX - base.x;
+      const dy = touch.clientY - base.y;
+      // 基准点随手指一起走，每帧只需增量
+      touchBaseRef.current = { x: touch.clientX, y: touch.clientY };
+
+      // 累计位移超过 10px 就认为是在拖动，抬起时不再补点击
+      touchAccumRef.current += Math.abs(dx) + Math.abs(dy);
+      if (touchAccumRef.current > 10) touchMovedRef.current = true;
+
+      /* 物理像素 → 画面坐标的缩放比。
+         必须按**画面矩形的实际像素宽高**算，不是整块 canvas：
+         画面只占 canvas 中间一块，用 canvas 宽度当分母会让每像素对应更少的
+         帧像素，指针走得比手指慢 —— 手指滑到头了指针还没到，看着像"撞墙"。 */
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const sr = screenRectRef.current;
+      const screenPxW = rect ? Math.max(1, (sr.x1 - sr.x0) * rect.width) : width;
+      const screenPxH = rect ? Math.max(1, (sr.y1 - sr.y0) * rect.height) : height;
+      const scaleX = width / screenPxW;
+      const scaleY = height / screenPxH;
+
+      const prev = lastMousePosRef.current ?? { x: width / 2, y: height / 2 };
+      let nx = prev.x + dx * scaleX;
+      let ny = prev.y + dy * scaleY;
+      nx = Math.max(0, Math.min(width - 1, nx));
+      ny = Math.max(0, Math.min(height - 1, ny));
+
+      /* dx/dy 是**本帧位移**（步步高用），取钳位前后的实际移动量。 */
+      const moveX = nx - prev.x;
+      const moveY = ny - prev.y;
+
+      lastMousePosRef.current = { x: nx, y: ny };
+      /* 圆圈代表**光标**位置：显示虚拟指针走到了哪，不是手指在哪。 */
+      setTouchPointer({ x: nx, y: ny });
+
+      /* 和鼠标同一条通路：绝对坐标 + 本帧位移都给。
+         指针位置由上面的累加算出来，所以不会被手指位置拽走。 */
+      onMouseEvent(MouseEventKind.MOVE, nx, ny, moveX, moveY, 0, 0);
+    },
+    [mouseEnabled, onMouseEvent, width, height, isInsideScreen],
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (!mouseEnabled || !onMouseEvent) return;
+      e.preventDefault();
+      if (e.touches.length > 0) return;
+
+      const pos = lastMousePosRef.current ?? { x: 0, y: 0 };
+
+      /* 判别「点一下」还是「拖动」：
+         手指几乎没动（< 10px）就当作点击 —— 补一对 DOWN/UP，
+         菜单按钮才点得动。拖动过就不补，避免误触发。 */
+      const moved = touchMovedRef.current;
+      if (!moved) {
+        /* DOWN 和 UP 不能在同一时刻连发。
+
+           裕兴读鼠标包要走 $4016 的时钟位（MouseYuxing::write 移位），
+           需要跨帧才能读到完整一包。DOWN/UP 同步发出时，
+           机器还没读到「按下」就已经收到「抬起」，
+           表现就是点不动 —— 开机动画跳不过去就是这个原因。
+
+           所以这里只发 DOWN，UP 交给下一帧的定时器发。 */
+        onMouseEvent(MouseEventKind.DOWN, pos.x, pos.y, 0, 0, MouseButtons.LEFT, 0);
+        window.setTimeout(() => {
+          onMouseEvent(MouseEventKind.UP, pos.x, pos.y, 0, 0, 0, 0);
+        }, 120);
+      } else {
+        onMouseEvent(MouseEventKind.UP, pos.x, pos.y, 0, 0, 0, 0);
+      }
+
+      lastScreenPosRef.current = null;
+      touchBaseRef.current = null;
+      touchMovedRef.current = false;
+      setTouchPointer(null);
+      /* 合成 mouse 事件在 touchend 之后才派发，延后一拍才解除屏蔽。 */
+      window.setTimeout(() => {
+        touchSequenceRef.current = false;
+      }, 400);
+    },
+    [mouseEnabled, onMouseEvent],
+  );
+
+  // ------------------------------------------------------------------
+  // 渲染循环
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let glRenderer: TvRenderer | null = null;
+    let ctx2d: CanvasRenderingContext2D | null = null;
+
+    if (mode === 'webgl') {
+      const r = createTvRenderer(canvas);
+      if (!r) {
+        /* 退回 2D 时必须把**真实原因**写出来 —— 之前只说「WebGL 不可用」，
+           实际是着色器编译报错，查了很久才发现。 */
+        const detail = getLastTvError() || '浏览器不支持 WebGL';
+        onModeError?.(`3D 渲染失败，已退回 Canvas2D：${detail}`);
+        onModeInfo?.('canvas2d', '');
+        return;
+      }
+      glRenderer = r;
+      r.setSmooth(smooth);
+    } else {
+      ctx2d = canvas.getContext('2d', { alpha: false });
+      if (!ctx2d) {
+        onModeError?.('Canvas2D 上下文创建失败');
+        return;
+      }
+      ctx2d.imageSmoothingEnabled = false;
+      imageDataRef.current = ctx2d.createImageData(width, height);
+    }
+
+    let alive = true;
+
+    // 首次算一次，之后容器尺寸一变就重算
+    fitSize();
+    const box = canvas.parentElement;
+    let ro: ResizeObserver | null = null;
+    if (box && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => fitSize());
+      ro.observe(box);
+    }
+    // 窗口尺寸/旋转变化也要跟着重算（ResizeObserver 覆盖不到的情况）
+    window.addEventListener('resize', fitSize);
+
+    const render = () => {
+      if (!alive) return;
+
+      /* 画面矩形：3D 模式下电视机只占画布中间一块，2D 模式铺满整块。
+         每帧同步，窗口缩放/换机型都自动跟着变。 */
+      if (glRenderer) {
+        screenRectRef.current = glRenderer.getScreenRect();
+      } else {
+        screenRectRef.current = { x0: 0, y0: 0, x1: 1, y1: 1 };
+      }
+
+      /* ---- 指针追赶：每帧朝目标挪一步 ----
+         逐字照 mouse-yuxing.cpp:66 的 syncFrame 语义：
+           frameX_ = clamp(pendingX_, -128, 127);  pendingX_ = 0;
+         一次交超过 127，超出部分被丢掉。所以要**分帧分批**追，
+         而且 cur 只加「这一帧实际交出去的量」，不能直接跳到 goal
+         （跳到 goal 后残值永远追不完，指针会卡住或抖动）。 */
+      {
+        const goal = mouseGoalRef.current;
+        const cur = mouseCurRef.current;
+        if (goal) {
+          if (mouseFirstRef.current) {
+            /* 首次：只对齐，不发。否则 cur 的 (0,0) 会把绝对坐标当位移 */
+            cur.x = goal.x;
+            cur.y = goal.y;
+            cur.buttons = goal.buttons;
+            mouseFirstRef.current = false;
+          } else {
+            const diffX = goal.x - cur.x;
+            const diffY = goal.y - cur.y;
+            const btnChanged = goal.buttons !== cur.buttons;
+            if ((diffX !== 0 || diffY !== 0 || btnChanged) && onMouseEvent) {
+              const stepX = Math.max(-MOUSE_DELTA_MAX, Math.min(MOUSE_DELTA_MAX, Math.trunc(diffX)));
+              const stepY = Math.max(-MOUSE_DELTA_MAX, Math.min(MOUSE_DELTA_MAX, Math.trunc(diffY)));
+              onMouseEvent(MouseEventKind.MOVE, goal.x, goal.y, stepX, stepY, goal.buttons, 0);
+              /* 只累加**实际交出去**的位移 */
+              cur.x += stepX;
+              cur.y += stepY;
+              cur.buttons = goal.buttons;
+            }
+          }
+        }
+      }
+
+      const { data, width: fbW, height: fbH } = getFramebuffer();
+
+      /* 没有画面（未开机 / 已关机）时**照样渲染**，只是屏幕贴图全黑。
+         之前 data 为 null 就整段跳过，canvas 停在上一帧 —— 表现就是
+         「点了关机，画面定在那里不灭」。电视机边框也必须一直画，
+         否则没开机时画布是空的。 */
+      /* 判据是**机器是否通电**，不是「有没有帧」——
+         关机后 getFramebuffer 仍返回最后一帧的缓冲，按帧判断会一直画那帧，
+         表现就是「关机了画面定住不灭」。 */
+      const live = powered && data && fbW > 0 && fbH > 0;
+
+      if (!live) {
+        // 用固定尺寸的黑帧喂渲染器：边框照常出来，屏幕是灭的
+        const bw = 256;
+        const bh = 240;
+        if (!blackFrameRef.current || blackFrameRef.current.length !== bw * bh * 4) {
+          blackFrameRef.current = new Uint8Array(bw * bh * 4);
+          // alpha 也要置 255，否则渲染出来是透明
+          for (let i = 3; i < blackFrameRef.current.length; i += 4) blackFrameRef.current[i] = 255;
+        }
+        if (glRenderer) {
+          if (sizeChangedRef.current) {
+            glRenderer.resize(canvas.width, canvas.height);
+            sizeChangedRef.current = false;
+          }
+          glRenderer.draw(blackFrameRef.current, bw, bh);
+        } else if (ctx2d) {
+          ctx2d.fillStyle = '#000000';
+          ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        animationRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      if (live) {
+        if (glRenderer) {
+          // 绘制缓冲尺寸变了（窗口缩放 / 换机型），投影矩阵要跟着重建
+          if (sizeChangedRef.current) {
+            glRenderer.resize(canvas.width, canvas.height);
+            sizeChangedRef.current = false;
+          }
+          glRenderer.draw(data as unknown as Uint8Array, fbW, fbH);
+        } else if (ctx2d) {
+          let img = imageDataRef.current;
+          if (!img || img.width !== fbW || img.height !== fbH) {
+            // 帧缓冲尺寸变了（换机型），重新分配
+            img = ctx2d.createImageData(fbW, fbH);
+            imageDataRef.current = img;
+          }
+          img.data.set(data);
+          /* 2D 路径：先把 256x240 画到离屏 canvas，再放大铺满绘制缓冲。
+             ���接 putImageData 会忽略 CSS 缩放，在高分屏上又糊又小。 */
+          const off = offscreenRef.current ?? document.createElement('canvas');
+          offscreenRef.current = off;
+          if (off.width !== fbW || off.height !== fbH) {
+            off.width = fbW;
+            off.height = fbH;
+          }
+          const octx = off.getContext('2d');
+          if (octx) {
+            octx.putImageData(img, 0, 0);
+            ctx2d.imageSmoothingEnabled = false; // 像素风要保持硬边
+            ctx2d.drawImage(off, 0, 0, canvas.width, canvas.height);
+          } else {
+            ctx2d.putImageData(img, 0, 0);
+          }
+        }
+      }
+
+      animationRef.current = requestAnimationFrame(render);
+    };
+
+    // 每秒刷新自检读数：画面静止时也能看出渲染在跑
+    const timer = window.setInterval(() => {
+      /* 只报渲染路径，不再报"已绘 xxx 帧" —— 那是自检读数，
+         对用户没有意义，而且占了顶栏的位置。 */
+      onModeInfo?.(mode, mode === 'webgl' ? '3D 电视模型' : 'Canvas2D');
+    }, 1000);
+
+    animationRef.current = requestAnimationFrame(render);
+
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener('resize', fitSize);
+      ro?.disconnect();
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      glRenderer?.dispose();
+    };
+  }, [getFramebuffer, width, height, mode, onModeInfo, onModeError, fitSize, mouseEnabled, onMouseEvent, screenToFrame, powered]);
+
+  /* ---- 关机提示：未开机时在屏幕正中显示的电源图标与文字 ----
+     canvas 的显示尺寸由 fitSize 算出来写进 style.width/height，
+     覆盖层必须跟着同一个尺寸走，否则会偏出电视机屏幕。
+     用 absolute + inset:0 撑满 canvas 所在的定位父元素是不够的 ——
+     父元素 .screen-area 比画面大（含黑边），所以要按 canvas 的实际矩形定位。 */
+  const [screenBox, setScreenBox] = useState<{ left: number; top: number; width: number; height: number; radius: number } | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const canvas = canvasRef.current;
+      const box = canvas?.parentElement;
+      if (!canvas || !box) { setScreenBox(null); return; }
+      const r = canvas.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+
+      /* 覆盖层只能盖住【屏幕内腔】，不能盖整个 canvas ——
+         3D 模式的电视机外框画在外壳网格上，盖到 canvas 全幅就把外框一起糊黑了。
+         关机后外框要一直看得见（外壳走环境光）。
+
+         screenRectRef 是渲染循环每帧从 glRenderer.getScreenRect() 同步的
+         归一化矩形（按屏幕网格顶点投影算出）。2D 模式没有 3D 模型，
+         该 ref 是 {0,0,1,1}，正好铺满整块画布。 */
+      const sr = screenRectRef.current;
+      if (!sr) { setScreenBox(null); return; }
+
+      const x = r.left - b.left + r.width * sr.x0;
+      const y = r.top - b.top + r.height * sr.y0;
+      const w = r.width * (sr.x1 - sr.x0);
+      const h = r.height * (sr.y1 - sr.y0);
+
+      /* 内腔四角有圆弧倒角，覆盖层按矩形盖会露出一点角。
+         用 border-radius 跟屏幕网格的圆角对齐（半径按宽度比例给）。 */
+      setScreenBox({
+        left: x,
+        top: y,
+        width: w,
+        height: h,
+        radius: Math.max(2, Math.round(w * 0.012)),
+      });
+    };
+    sync();
+    window.addEventListener('resize', sync);
+    /* fitSize 改的是 canvas.style，不是窗口大小，resize 事件收不到；
+       用一个轻量 rAF 轮询跟着它变（只在关机时才有覆盖层，开销可忽略）。 */
+    let raf = 0;
+    const tick = () => { sync(); raf = requestAnimationFrame(tick); };
+    if (!powered) raf = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener('resize', sync);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [powered]);
+
+  return (
+    <>
+      <canvas
+        // key 让切换模式时整块重建，否则拿不到新上下文
+        key={mode}
+        ref={canvasRef}
+        className={mode === 'webgl' ? 'gl' : 'c2d'}
+        width={width}
+        height={height}
+        onMouseMove={handleMouseMove}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onContextMenu={(e) => mouseEnabled && e.preventDefault()}
+        style={{ cursor: mouseEnabled ? 'crosshair' : 'default' }}
+      />
+
+      {/* 触摸时的虚拟指针：让用户看得见手指把指针拖到了哪。
+          定位用 canvas 的实际位置 + 显示尺寸换算成绝对像素 ——
+          百分比会相对 .screen-area 算，画面居中留黑边时就偏了。 */}
+      {touchPointer && (
+        <div className="touch-cursor" style={cursorStyle} />
+      )}
+
+      {/* 关机提示：电视机屏幕正中一个电源图标，下面两行字。
+          只在未开机（powered=false）时出现，盖在黑色画面上。 */}
+      {!powered && screenBox && (
+        <div
+          className="power-off-hint"
+          style={{
+            left: `${screenBox.left}px`,
+            top: `${screenBox.top}px`,
+            width: `${screenBox.width}px`,
+            height: `${screenBox.height}px`,
+            borderRadius: `${screenBox.radius}px`,
+          }}
+        >
+          <svg
+            className="power-off-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            {/* 电源符号：圆弧留出上方缺口 + 一根竖线 */}
+            <path d="M12 3.5 L12 11" />
+            <path d="M7.2 6.4 A7.2 7.2 0 1 0 16.8 6.4" />
+          </svg>
+          <div className="power-off-title">已关机</div>
+          <div className="power-off-sub">请加载镜像并开机</div>
+        </div>
+      )}
+    </>
+  );
+}

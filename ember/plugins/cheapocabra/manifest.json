@@ -1,0 +1,26 @@
+{
+  "id": "cheapocabra",
+  "name": "Cheapocabra",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Cheapocabra（GTROM，mapper 111）：$5000-$5FFF 与 $7000-$7FFF 写入选 32K 程序页（位 3-0）、8K 图案 RAM 页（位 4）与名称表（位 5 选 16K 名称表显存的前后一半，4 个 1K 页依次对应）；闪存写入（$8000 起）不处理。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 111 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "ram", "size": 16384 },
+    { "id": "ntram", "kind": "ram", "size": 16384 }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$5000-$5FFF", "write": true },
+    { "bus": "cpu", "range": "$7000-$7FFF", "write": true }
+  ],
+  "nametable": "custom"
+}

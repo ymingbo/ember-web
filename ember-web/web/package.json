@@ -1,0 +1,26 @@
+{
+  "name": "ember-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Ember 模拟器的 WebAssembly 移植：在浏览器里运行 FC/NES 卡带与裕兴、步步高等学习机",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "build:wasm": "bash ../scripts/build-wasm.sh",
+    "build:all": "bash ../scripts/build-all.sh"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4"
+  },
+  "license": "GPL-3.0-only"
+}

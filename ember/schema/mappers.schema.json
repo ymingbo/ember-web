@@ -1,0 +1,227 @@
+{
+  "$comment": "mapper 插件模块：插件的列表、详情、安装、卸载、启停与重新加载。规则见 docs/03-mapper插件规范.md。",
+  "module": "mappers",
+  "types": {
+    "MapperMatchRule": {
+      "type": "object",
+      "description": "一项匹配条件：mapper 号必写，其余可选；写出的条件必须全部满足。",
+      "properties": {
+        "mapper": { "type": "integer", "minimum": 0, "maximum": 4095, "description": "mapper 号" },
+        "variant": { "type": "integer", "minimum": 0, "maximum": 255, "description": "变体" },
+        "prgSize": { "type": "integer", "minimum": 0, "description": "PRG 的字节数" },
+        "chrSize": { "type": "integer", "minimum": 0, "description": "CHR 的字节数" },
+        "crc32Prg": { "type": "string", "minLength": 8, "maxLength": 8, "description": "PRG 的 CRC-32，8 位十六进制" },
+        "crc32All": { "type": "string", "minLength": 8, "maxLength": 8, "description": "PRG 加 CHR 的 CRC-32，8 位十六进制" }
+      },
+      "required": ["mapper"]
+    },
+    "MapperSummary": {
+      "type": "object",
+      "description": "插件摘要，列表里的一行。",
+      "properties": {
+        "id": { "type": "string", "minLength": 3, "maxLength": 40, "description": "插件标识" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 40, "description": "显示名称" },
+        "version": { "type": "string", "minLength": 5, "maxLength": 32, "description": "插件版本，主.次.修订" },
+        "publisher": { "type": "string", "minLength": 1, "maxLength": 40, "description": "发布者" },
+        "description": { "type": "string", "maxLength": 200, "description": "说明" },
+        "host": { "type": "array", "items": { "type": "string" }, "description": "要求的主机型号" },
+        "devices": { "type": "array", "items": { "type": "string", "enum": ["mouse"] }, "description": "卡带用到的外设，目前只有 mouse（鼠标）；没有声明的外设，界面不会把它接到卡带上" },
+        "match": { "type": "array", "items": { "$ref": "#/types/MapperMatchRule" }, "description": "匹配条件，任一项满足即匹配" },
+        "source": { "type": "string", "enum": ["bundled", "user", "development"], "description": "来源：bundled 预装，user 用户安装，development 开发目录（首选项 mappers.developmentDirectory 指定的目录里未打包的插件）" },
+        "enabled": { "type": "boolean", "description": "是否启用" }
+      },
+      "required": ["id", "name", "version", "publisher", "host", "devices", "match", "source", "enabled"]
+    },
+    "MapperStorageInfo": {
+      "type": "object",
+      "description": "清单里的一个存储区。",
+      "properties": {
+        "id": { "type": "string", "description": "存储区标识" },
+        "kind": { "type": "string", "enum": ["rom", "ram"], "description": "种类" },
+        "from": { "type": "string", "enum": ["file.prg", "file.chr"], "description": "rom 的数据来源" },
+        "size": { "type": "integer", "minimum": 0, "description": "ram 的字节数" },
+        "battery": { "type": "boolean", "description": "ram 是否带电池" },
+        "fallbackSize": { "type": "integer", "minimum": 0, "description": "来源为空时改用的 ram 的字节数" }
+      },
+      "required": ["id", "kind", "battery"]
+    },
+    "MapperWindowInfo": {
+      "type": "object",
+      "description": "清单里的一个窗口。",
+      "properties": {
+        "id": { "type": "string", "description": "窗口标识" },
+        "bus": { "type": "string", "enum": ["cpu", "ppu"], "description": "所在总线" },
+        "range": { "type": "string", "description": "地址范围，如 $8000-$9FFF" },
+        "storage": { "type": "string", "description": "访问的存储区" },
+        "size": { "type": "integer", "minimum": 1, "description": "一个 bank 的字节数" },
+        "initial": { "type": "string", "description": "复位后指向的 bank：整数、first 或 last" },
+        "access": { "type": "string", "enum": ["r", "rw"], "description": "访问方式" }
+      },
+      "required": ["id", "bus", "range", "storage", "size", "initial", "access"]
+    },
+    "MapperRegisterInfo": {
+      "type": "object",
+      "description": "清单里的一段寄存器范围。",
+      "properties": {
+        "bus": { "type": "string", "enum": ["cpu", "ppu"], "description": "所在总线" },
+        "range": { "type": "string", "description": "地址范围" },
+        "read": { "type": "boolean", "description": "是否回调读" },
+        "write": { "type": "boolean", "description": "是否回调写" }
+      },
+      "required": ["bus", "range", "read", "write"]
+    },
+    "MapperStateInfo": {
+      "type": "object",
+      "description": "清单里声明的一项脚本状态。",
+      "properties": {
+        "name": { "type": "string", "description": "状态名" },
+        "bits": { "type": "integer", "minimum": 1, "maximum": 32, "description": "位宽" },
+        "description": { "type": "string", "description": "说明" }
+      },
+      "required": ["name", "bits", "description"]
+    },
+    "MapperSettingOption": {
+      "type": "object",
+      "description": "choice 设置项的一个选项。",
+      "properties": {
+        "value": { "type": "string", "description": "取值" },
+        "label": { "type": "string", "description": "显示文字" }
+      },
+      "required": ["value", "label"]
+    },
+    "MapperSettingInfo": {
+      "type": "object",
+      "description": "清单里的一个设置项。",
+      "properties": {
+        "key": { "type": "string", "description": "设置键" },
+        "label": { "type": "string", "description": "显示文字" },
+        "kind": { "type": "string", "enum": ["text", "choice", "switch"], "description": "种类" },
+        "defaultValue": { "description": "默认值：text 与 choice 为字符串，switch 为布尔值" },
+        "description": { "type": "string", "description": "说明" },
+        "options": { "type": "array", "items": { "$ref": "#/types/MapperSettingOption" }, "description": "choice 的选项" }
+      },
+      "required": ["key", "label", "kind", "defaultValue"]
+    },
+    "MapperDetail": {
+      "type": "object",
+      "description": "插件详情：摘要加清单的各部分。",
+      "properties": {
+        "summary": { "$ref": "#/types/MapperSummary" },
+        "storage": { "type": "array", "items": { "$ref": "#/types/MapperStorageInfo" }, "description": "存储区" },
+        "windows": { "type": "array", "items": { "$ref": "#/types/MapperWindowInfo" }, "description": "窗口" },
+        "nametable": { "type": "string", "description": "名称表的初始连法" },
+        "registers": { "type": "array", "items": { "$ref": "#/types/MapperRegisterInfo" }, "description": "寄存器范围" },
+        "state": { "type": "array", "items": { "$ref": "#/types/MapperStateInfo" }, "description": "脚本状态" },
+        "settings": { "type": "array", "items": { "$ref": "#/types/MapperSettingInfo" }, "description": "设置项" }
+      },
+      "required": ["summary", "storage", "windows", "nametable", "registers", "state", "settings"]
+    }
+  },
+  "requests": {
+    "list": {
+      "description": "列出生效的插件：同一标识有多个来源时只列一个，开发目录里的优先，其余版本最高的生效，版本相同时用户安装的优先。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "plugins": { "type": "array", "items": { "$ref": "#/types/MapperSummary" }, "description": "插件摘要，按标识排序" }
+        },
+        "required": ["plugins"]
+      }
+    },
+    "info": {
+      "description": "返回一个插件的摘要与清单详情。",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 40, "description": "插件标识" } },
+        "required": ["id"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "plugin": { "$ref": "#/types/MapperDetail" } },
+        "required": ["plugin"]
+      },
+      "errors": ["mappers.notFound"]
+    },
+    "install": {
+      "description": "安装一个 .emap 插件包：检查通过后放进用户插件目录；已有同标识的用户插件时替换。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "minLength": 1, "description": "插件包的文件路径，由外壳根据用户选择的文件给出" } },
+        "required": ["path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "plugin": { "$ref": "#/types/MapperSummary" } },
+        "required": ["plugin"]
+      },
+      "errors": ["mappers.invalidPackage", "mappers.hostUnknown", "mappers.limitExceeded"]
+    },
+    "uninstall": {
+      "description": "卸载用户安装的插件；预装的插件只能停用，开发目录里的插件从开发目录里删除它的目录。",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 40, "description": "插件标识" } },
+        "required": ["id"]
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["mappers.notFound", "mappers.bundledReadonly", "mappers.developmentReadonly"]
+    },
+    "setEnabled": {
+      "description": "启用或停用一个插件；停用的插件不参与匹配。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 40, "description": "插件标识" },
+          "enabled": { "type": "boolean", "description": "是否启用" }
+        },
+        "required": ["id", "enabled"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "plugin": { "$ref": "#/types/MapperSummary" } },
+        "required": ["plugin"]
+      },
+      "errors": ["mappers.notFound"]
+    },
+    "reload": {
+      "description": "重新读取预装目录、用户目录里的插件包，以及开发目录（首选项 mappers.developmentDirectory）里的未打包插件，下次装配或硬复位时生效；不合格的包或目录被跳过并写入错误日志。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "plugins": { "type": "array", "items": { "$ref": "#/types/MapperSummary" }, "description": "重新加载后生效的插件摘要" }
+        },
+        "required": ["plugins"]
+      }
+    }
+  },
+  "mainRequests": {
+    "openPackage": {
+      "description": "弹出系统文件选择窗口（.emap 插件包），把用户选定的文件交给 mappers.install；用户取消选择时 canceled 为 true，不是错误。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "plugin": { "$ref": "#/types/MapperSummary", "description": "安装后的插件摘要；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["mappers.invalidPackage", "mappers.hostUnknown", "mappers.limitExceeded"]
+    }
+  },
+  "events": {
+    "changed": {
+      "description": "插件安装、卸载、启停或重新加载。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "id": { "type": ["string", "null"], "description": "变化的插件标识；重新加载时为 null" }
+        },
+        "required": ["id"]
+      }
+    }
+  }
+}

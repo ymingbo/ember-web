@@ -1,0 +1,27 @@
+{
+  "id": "bmc235",
+  "name": "BMC-235",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "合集卡（mapper 235）：$8000-$FFFF 写入时由地址决定 bank 与名称表：位 10 为 1 时单屏，否则位 13 选水平或垂直；位 8-9 与 PRG 容量（1M、2M、4M 以上）决定外层 bank 或开放总线，开放总线时 $8000-$FFFF 不映射；位 11 为 1 时 16K 的 bank 重复，为 0 时按 32K 一对映射；任何复位回到第 0 组。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 235 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

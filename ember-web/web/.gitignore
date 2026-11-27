@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# WASM build artifacts
+src/ember/ember_wasm.js
+src/ember/ember_wasm.wasm
+src/ember/ember_wasm.wasm.map
+src/ember/ember_wasm.data

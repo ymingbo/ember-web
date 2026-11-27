@@ -1,0 +1,124 @@
+{
+  "$comment": "preferences 模块：首选项的登记、读取、修改与恢复默认。设置项由各模块在核心里登记，保存在用户数据目录的 config/preferences.json。规则见 docs/04-调试服务.md 第 4.8 节与 docs/05-界面.md 第 4.5 节。",
+  "module": "preferences",
+  "types": {
+    "PreferenceGroup": {
+      "type": "object",
+      "description": "设置项的分组，首选项页左侧的一项。",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "分组标识，如 appearance" },
+        "label": { "type": "string", "minLength": 1, "description": "分组的显示名称" }
+      },
+      "required": ["id", "label"]
+    },
+    "PreferenceOption": {
+      "type": "object",
+      "description": "选择类设置项的一个可选值。",
+      "properties": {
+        "value": { "type": "string", "minLength": 1, "description": "保存的取值" },
+        "label": { "type": "string", "minLength": 1, "description": "显示名称" }
+      },
+      "required": ["value", "label"]
+    },
+    "PreferenceSetting": {
+      "type": "object",
+      "description": "一个设置项：登记的内容与当前的取值。",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "设置项标识，分组标识加点再加名称，如 sound.buffer" },
+        "group": { "type": "string", "minLength": 1, "description": "所属分组的标识" },
+        "label": { "type": "string", "minLength": 1, "description": "显示名称" },
+        "description": { "type": "string", "description": "一两句话的说明" },
+        "kind": { "type": "string", "enum": ["choice", "switch", "integer", "text"], "description": "种类：choice 从 options 里选一个，switch 开关（布尔值），integer 范围内的整数，text 不超过 maxLength 个字节的文字" },
+        "options": { "type": "array", "items": { "$ref": "#/types/PreferenceOption" }, "description": "choice 的可选值，其他种类没有这一项" },
+        "minimum": { "type": "integer", "description": "integer 的最小值，其他种类没有这一项" },
+        "maximum": { "type": "integer", "description": "integer 的最大值，其他种类没有这一项" },
+        "maxLength": { "type": "integer", "minimum": 1, "description": "text 的最大字节数（UTF-8），其他种类没有这一项" },
+        "hidden": { "type": "boolean", "description": "为 true 时首选项页不显示，只保存取值（如音量）" },
+        "picker": { "type": "string", "enum": ["directory", "regenerate"], "description": "text 设置项输入框旁的按钮：取值是文件夹路径时为 directory，页面显示“选择”按钮；取值由核心生成（置空即重新生成）时为 regenerate，页面显示“更换”按钮（请求恢复默认）并且不显示“恢复默认”；其他设置项没有这一项" },
+        "defaultValue": { "description": "出厂默认值：choice 为字符串，switch 为布尔值，integer 为整数" },
+        "value": { "description": "当前取值，类型同 defaultValue" }
+      },
+      "required": ["id", "group", "label", "description", "kind", "hidden", "defaultValue", "value"]
+    }
+  },
+  "requests": {
+    "list": {
+      "description": "列出全部分组与设置项（含当前取值）；分组与设置项按登记的顺序排列。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "groups": { "type": "array", "items": { "$ref": "#/types/PreferenceGroup" }, "description": "分组" },
+          "settings": { "type": "array", "items": { "$ref": "#/types/PreferenceSetting" }, "description": "设置项" }
+        },
+        "required": ["groups", "settings"]
+      },
+      "errors": []
+    },
+    "set": {
+      "description": "修改一个设置项：核心按登记的种类校验取值，保存到文件，并发出 preferences.changed；取值没有变化时不发事件。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "description": "设置项标识" },
+          "value": { "description": "新的取值：choice 为 options 里的字符串，switch 为布尔值，integer 为 minimum 到 maximum 之间的整数" }
+        },
+        "required": ["id", "value"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "description": "设置项标识" },
+          "value": { "description": "修改之后的取值" }
+        },
+        "required": ["id", "value"]
+      },
+      "errors": ["preferences.unknown", "preferences.invalidValue"]
+    },
+    "reset": {
+      "description": "把一个设置项恢复为出厂默认值；取值没有变化时不发事件。",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "string", "minLength": 1, "description": "设置项标识" } },
+        "required": ["id"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "description": "设置项标识" },
+          "value": { "description": "恢复之后的取值" }
+        },
+        "required": ["id", "value"]
+      },
+      "errors": ["preferences.unknown"]
+    }
+  },
+  "mainRequests": {
+    "pickDirectory": {
+      "description": "弹出系统的选择文件夹窗口，返回用户选定的文件夹路径；用户取消选择时 canceled 为 true，不是错误。页面再用 preferences.set 保存取值。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "path": { "type": "string", "minLength": 1, "description": "选定的文件夹路径；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": []
+    }
+  },
+  "events": {
+    "changed": {
+      "description": "一个设置项的取值变了（界面修改、恢复默认、核心里的模块修改都会发出）。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "description": "设置项标识" },
+          "value": { "description": "新的取值" }
+        },
+        "required": ["id", "value"]
+      }
+    }
+  }
+}

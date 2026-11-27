@@ -1,0 +1,29 @@
+{
+  "id": "unl-d1038",
+  "name": "UNL-D1038",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "UNL-D1038（mapper 59）：$8000-$FFFF 的地址（不是数据）选页：位 7 选两个相同的 16K 页或一个 32K 页，位 6-4 选程序页，位 2-0 选 8K 图案页，位 3 选镜像；位 8 为 1 时读 $8000-$FFFF 得 DIP 开关值。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 59 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "dip", "kind": "ram", "size": 16384 }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": ["prg", "dip"], "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": ["prg", "dip"], "size": 16384, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "settings": [
+    { "key": "dip", "label": "DIP 开关", "kind": "choice", "default": "0", "description": "卡带上 2 个 DIP 开关的位置。", "options": [{ "value": "0", "label": "0" },{ "value": "1", "label": "1" },{ "value": "2", "label": "2" },{ "value": "3", "label": "3" }] }
+  ],
+  "nametable": "header"
+}

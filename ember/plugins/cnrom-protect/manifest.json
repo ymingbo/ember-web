@@ -1,0 +1,26 @@
+{
+  "id": "cnrom-protect",
+  "name": "CNROM 保护",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "带保护的 CNROM（mapper 185）：PRG 固定 32K；写入 $8000-$FFFF 的值（与 ROM 相与）按子 mapper 判断是否开启 CHR——子 mapper 0 要求低 4 位不全为 0 且不等于 $13，子 mapper 4-7 要求低 2 位等于 0-3；关闭时 CHR 读出的每个字节的位 0 为 1。",
+  "host": ["fc"],
+  "busConflict": true,
+  "match": [
+    { "mapper": 185 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "stub", "kind": "ram", "size": 8192 }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": ["chr", "stub"], "size": 8192, "initial": 0, "access": "r" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

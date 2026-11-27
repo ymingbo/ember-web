@@ -1,0 +1,1297 @@
+/* ==========================================================================
+   Ember FC 界面样式
+   --------------------------------------------------------------------------
+   布局（桌面）
+     .app        纵向铺满视口
+       .topbar   顶栏：品牌 + 状态 + 帧率 + 抽屉开关
+       .stage    横向：左画面 / 右侧栏
+         .screen-area  画面区，canvas 居中且固定 4:3
+         .sidebar      右侧面板（280px）
+       .bottombar 底部按键说明
+
+   布局（移动端 ≤820px）
+     .sidebar 变成底部抽屉，点面板上沿的 .drawer-handle 收起/展开。
+
+   配色沿用 fceux-web：底 #0d1117 / 面 #161b22 / 线 #30363d / 字 #c9d1d9
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* 禁止橡皮筋和滚动链：软键盘弹出时页面绝不能被推走 */
+  overscroll-behavior: none;
+}
+
+/* body 钉死在视口上，高度锁在「无软键盘时」的基准高度。
+   手机软键盘弹出时，可见区从底部被吃掉一截，而浏览器还会尝试滚动
+   页面去露出聚焦的输入框 —— 结果是下半部分藏到键盘后面、顶栏被推出视野。
+   body 用 fixed 定位（滚动无效），再由 --app-shift 把内容整体上移
+   键盘占掉的高度，顶栏就重新回到可见区顶部。 */
+body {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-h, 100%);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* 键盘弹出时可见区变矮 → --app-h 变小 → 整页收缩，
+   各栏按新的高度重新排布，画面自动缩小到剩余空间，
+   顶栏始终在 y=0，不会被推出屏幕。 */
+
+#root {
+  height: 100%;
+}
+
+/* .app 用父级百分比即可：body 已经钉在视口上 */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+
+}
+
+/* ------------------------------------------------------------------ 顶栏 */
+
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  /* 左右两区必须始终同一行：窄屏元素多，一旦允许 wrap 就会被挤成两行，
+     顶栏从 30px 变成 57px，把下面的画面整体往下推。 */
+  flex-wrap: nowrap;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  /* 顶栏是 flex 容器，宽度由 padding 决定，box-sizing 保证不额外撑宽 */
+  box-sizing: border-box;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.brand-mark {
+  color: #58a6ff;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.brand-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6edf3;
+  white-space: nowrap;
+}
+
+.brand-ver {
+  font-size: 11px;
+  color: #6e7681;
+  padding: 1px 6px;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+}
+
+.tag-learn {
+  font-size: 11px;
+  color: #d29922;
+  border: 1px solid #9e6a03;
+  background: #3d2b00;
+  padding: 1px 7px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 两区都可收缩：窄屏上元素多，不给收缩就会互相挤到重叠 */
+  min-width: 0;
+  flex-shrink: 1;
+  white-space: nowrap;
+}
+
+/* 状态徽标：颜色随 .status-<状态> 变 */
+.status {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.status-running {
+  background: #1f6feb33;
+  border-color: #1f6feb;
+  color: #79c0ff;
+}
+
+.status-paused {
+  background: #9e6a0333;
+  border-color: #9e6a03;
+  color: #d29922;
+}
+
+.status-error {
+  background: #f8514922;
+  border-color: #f85149;
+  color: #ff7b72;
+}
+
+.status-ready {
+  background: #23863633;
+  border-color: #238636;
+  color: #7ee787;
+}
+
+.fps {
+  font-size: 11px;
+  color: #6e7681;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ 横幅 */
+
+.banner {
+  flex: 0 0 auto;
+  margin: 8px 14px 0;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.banner strong {
+  margin-right: 6px;
+}
+
+.banner-error {
+  background: #f8514922;
+  border: 1px solid #f85149;
+  color: #ff7b72;
+}
+
+.banner-warn {
+  background: #9e6a0322;
+  border: 1px solid #9e6a03;
+  color: #d29922;
+}
+
+/* ------------------------------------------------------------------ 主区 */
+
+.stage {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.screen-area {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  background: #000;
+  overflow: hidden;
+}
+
+/* ---- canvas：固定 4:3，居中，等比缩放 ----
+   canvas 的 width/height 属性是帧缓冲尺寸（256x240），那是绘图缓冲不是显示尺寸。
+   这里用 aspect-ratio 锁死 4:3 + max-* 限制：容器宽就左右留黑边、容器高就上下
+   留黑边，两种情况下画面都是严格 4:3 且居中，绝不拉伸变形。 */
+#screen-area canvas,
+.screen-area canvas {
+  display: block;
+  align-self: flex-start;
+  /* 显示尺寸由 EmulatorCanvas 按容器实际像素算出后写进 style.width/height
+     （见 useFitSize）。CSS 这里不设尺寸 —— 所有纯 CSS 写法都试过：
+       auto          → 停在 256px，太小
+       100%/100%     → 拉伸变形
+       aspect-ratio  → 和 100% 打架，比例失效
+     JS 拿到容器的 clientWidth/clientHeight 后取 min(w, h*4/3) 最可靠。 */
+  image-rendering: pixelated;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+
+  /* 显示器框：细边 + 外发光 + 内阴影，像嵌在一块弧面玻璃里 */
+  border-radius: 5px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 36px rgba(0, 0, 0, 0.85),
+    inset 0 0 60px rgba(0, 0, 0, 0.5);
+}
+
+.screen-area canvas.gl {
+  z-index: 2;
+}
+
+.screen-area canvas.c2d {
+  z-index: 1;
+}
+
+/* 触摸虚拟指针：手指拖动时显示指针位置。
+   定位基准是 .screen-area（canvas 的父元素），用百分比换算到画面内。 */
+.touch-cursor {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid #58a6ff;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(88, 166, 255, 0.35), transparent 70%);
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.7);
+  pointer-events: none;
+  z-index: 10;
+  transition:
+    left 0.04s linear,
+    top 0.04s linear;
+}
+
+/* 关机提示：未开机时在电视机屏幕上居中显示电源图标与两行字。
+   尺寸和位置由 JS 按 canvas 的实际矩形写入 style（见 EmulatorCanvas 的 screenBox）——
+   用 inset:0 撑满 .screen-area 不行，那个盒子比画面大，含左右/上下黑边。
+
+   背景必须透明：关机时屏幕本来就是黑的（渲染器喂黑帧），黑底由 WebGL 画。
+   这里再铺一层不透明黑会把整块 canvas 盖住 —— 包括 3D 电视机的外框，
+   表现就是「关机后连电视机都不见了」。之前外框本身就暗得看不见，
+   所以这层黑底一直没暴露出问题。 */
+.power-off-hint {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: transparent;
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 3;
+  user-select: none;
+}
+
+.power-off-icon {
+  width: 46px;
+  height: 46px;
+  color: #4a5568;
+  /* 图标本身画在 24 单位坐标系里，这里放大显示 */
+  flex: 0 0 auto;
+}
+
+.power-off-title {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+}
+
+.power-off-sub {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #586069;
+}
+
+/* 小屏（手机竖屏）时整块等比缩小，避免文字挤满屏幕 */
+/* ---- 窄屏顶栏：保证所有元素挤在一行 ----
+   390px 宽时实测：brand 187px + right 189px + 间距 8px = 384px，
+   而可用宽度只有 390 - 2×10(padding) = 370px，差 14px 就挤到换行，
+   顶栏从 30px 变成 57px，把下面的模拟器画面整体往下推。
+   处理：缩小 padding/gap、去掉品牌字样只留图标和版本、
+   隐藏 fps 读数（画面里另有读数）和机型标记。
+   这些元素在手机上都不关键，保它们不如保画面高度。 */
+/* ---- 顶栏文字/图标切换 ----
+   窄屏放不下文字，改用图标表示，宽屏恢复文字。
+   默认（宽屏）显示文字、隐藏图标；窄屏反过来。 */
+.lbl-icon {
+  display: none;
+}
+
+/* 状态圆点：颜色继承 .status，靠 background 显示，
+   不同状态下自动变色，不用再写一套主题色 */
+.status-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@media (max-width: 640px) {
+  .lbl-full {
+    display: none;
+  }
+
+  .lbl-icon {
+    display: inline;
+  }
+
+  /* 圆点需要 block 才有尺寸 */
+  .status-dot {
+    display: block;
+  }
+
+  /* 只剩圆点时收窄内边距，做成圆形小灯 */
+  .status {
+    padding: 5px;
+    border-radius: 50%;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .brand {
+    gap: 5px;
+  }
+
+  .brand-ver {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .tag-learn {
+    font-size: 10px;
+    padding: 0 4px;
+  }
+
+  .topbar-right {
+    gap: 5px;
+  }
+
+  .status {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* fps 在手机上去掉：省 41px，且画面里已有需要时才看的读数 */
+  .fps {
+    display: none;
+  }
+
+  /* 机型标记（3D 电视模型）在手机上缩到最简 */
+  .mode-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+
+  .topbar-about {
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 520px) {
+  .power-off-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .power-off-title {
+    font-size: 13px;
+  }
+  .power-off-sub {
+    font-size: 10px;
+  }
+  .power-off-hint {
+    gap: 7px;
+  }
+}
+
+/* 渲染路径读数，放在顶栏（底栏）里。
+   原先绝对定位贴在画面左下角，会被 3D 电视机挡住，故移出画面区。 */
+.mode-badge {
+  font-size: 10px;
+  color: #6e7681;
+  background: #161b22cc;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 2px 7px;
+  pointer-events: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* 右侧面板：宽度固定，不随内容变。加载 ROM 前后外设列表的项数不同，
+   若让它按内容撑开，切换 ROM 时整个画面区会被挤得忽宽忽窄。 */
+.sidebar {
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 280px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 桌面端是常驻侧栏，没有抽屉，容器和把手都不出现。 */
+.drawer {
+  display: contents;
+}
+
+.drawer-handle {
+  display: none;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+.panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.panel-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6e7681;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.panel-row:last-child {
+  margin-bottom: 0;
+}
+
+.rom-name {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #7ee787;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vol-val {
+  font-size: 11px;
+  color: #8b949e;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ 按钮 */
+
+.btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #c9d1d9;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: #30363d;
+  border-color: #58a6ff;
+  color: #e6edf3;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #388bfd;
+  border-color: #388bfd;
+  color: #fff;
+}
+
+/* 紧凑按钮：渲染面板里两个并排的小按钮（3D/2D、帧率） */
+.btn-compact {
+  flex: 1 1 0;
+  padding: 5px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ---- 机型下拉框 ---- */
+/* 换成下拉之后不再挤按钮：机型越多只会让列表变长，面板宽度不变。
+   分组（经典 FC / 学习机 / 其它）由 optgroup 提供，optgroup 本身没法改样式，
+   所以只统一下拉框本体和展开后的选项配色。 */
+.machine-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.machine-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #c9d1d9;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  /* 自绘箭头：系统箭头在深色底上几乎看不见 */
+  background-image: linear-gradient(45deg, transparent 50%, #8b949e 50%),
+    linear-gradient(135deg, #8b949e 50%, transparent 50%);
+  background-position: calc(100% - 15px) center, calc(100% - 10px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+
+.machine-select:hover:not(:disabled) {
+  border-color: #1f6feb;
+}
+
+.machine-select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.machine-select:focus-visible {
+  outline: 2px solid #1f6feb;
+  outline-offset: 1px;
+}
+
+/* 展开后的列表由系统绘制，只能给底色和字色，optgroup 标题会被系统压暗 */
+.machine-select option,
+.machine-select optgroup {
+  background: #161b22;
+  color: #c9d1d9;
+}
+
+.builtin-hint {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: #484f58;
+  text-align: center;
+}
+
+/* 加载转圈 */
+.spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #ffffff44;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hidden-input {
+  display: none;
+}
+
+/* 开关项 */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #8b949e;
+  cursor: pointer;
+}
+
+.switch input {
+  accent-color: #1f6feb;
+  cursor: pointer;
+}
+
+/* 音量滑块 */
+input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: #1f6feb;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ 外设面板 */
+
+.periph-panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.periph-title {
+  margin: 0;
+  padding-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6e7681;
+  border-bottom: 1px solid #30363d;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.periph-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.periph-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b949e;
+}
+
+.periph-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  font-size: 11px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 5px;
+}
+
+.periph-drive-no {
+  color: #6e7681;
+  flex: 0 0 auto;
+}
+
+/* 软驱读写指示灯：真机驱动器面板上那盏长方形的绿灯，读盘时点亮。
+   用长方形而不是圆点，贴真机面板的样子；熄灭时只留暗底，不抢视觉。 */
+.floppy-led {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 11px;
+  height: 6px;
+  border-radius: 1px;
+  background: #253d2c;
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.6);
+  transition: background 60ms linear, box-shadow 60ms linear;
+}
+
+.floppy-led.led-on {
+  background: #3fdc72;
+  box-shadow: 0 0 6px 1px rgba(63, 220, 114, 0.85);
+}
+
+.periph-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #7ee787;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.periph-modified {
+  color: #d29922;
+  margin-left: 4px;
+}
+
+.periph-empty {
+  flex: 1 1 auto;
+  color: #484f58;
+}
+
+.periph-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.periph-meta {
+  font-size: 10px;
+  color: #6e7681;
+}
+
+.periph-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.periph-hint {
+  margin: 0;
+  font-size: 10px;
+  color: #484f58;
+  line-height: 1.5;
+}
+
+/* 打印预览：白纸黑字，可滚动 */
+.periph-printview {
+  max-height: 240px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+}
+
+.periph-printview canvas {
+  display: block;
+  image-rendering: pixelated;
+  max-width: 100%;
+}
+
+/* 外设面板里的按钮稍小一号 */
+.periph-row .btn,
+.periph-actions .btn {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ 底部 */
+
+.bottombar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 14px;
+  font-size: 11px;
+  color: #6e7681;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.hint-mouse {
+  color: #79c0ff;
+  margin-left: auto;
+}
+
+/* 触屏手柄条 */
+/* 触屏手柄外层：手机上机身固定 318px 宽，320~360px 的老机型放不下，
+   用整体缩放兜底。缩放不改各键的相对位置，手指按下去仍然对得上。 */
+/* ---- 底部栏栈的总高度，供 .drawer 让位 ----
+   .drawer 是 position:fixed 的独立层，写在 .stage 上的变量它继承不到，
+   所以由 App 用 ResizeObserver 实测 .bottom-stack 的高度后写到根节点。
+
+   不再硬编码任何数字：以前把「手柄 131px / 键盘 86px / 底栏 24px」
+   分别写死再 calc 相加，只要多一条栏或者哪条栏高度变了就必然算错，
+   表现为把手插进键盘栏里、或者键盘栏压住手柄。
+   现在无论几条栏、各自多高，读到的都是实测总高度。 */
+
+
+/* PC 端手柄**左对齐**（跟着底栏左边，和顶栏控件同一列起点）；
+   手机端才居中 —— 窄屏机身几乎占满宽度，居中才顺眼；
+   宽屏上居中会让手柄飘在屏幕正中，和左对齐的其他控件不在一条线上。 */
+.pad-wrap {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 4px 0;
+  transform-origin: center center;
+}
+
+/* 手机端居中：判据用指针类型而不是宽度 ——
+   宽屏但触屏的平板也该居中，窄窗口的笔记本仍该左对齐。 */
+@media (pointer: coarse) {
+  .pad-wrap {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 360px) {
+  /* 机身 318 + 底栏左右内边距 20 = 338，超出视口就按比例缩 */
+  .pad-wrap {
+    transform: scale(0.92);
+  }
+}
+
+@media (max-width: 330px) {
+  .pad-wrap {
+    transform: scale(0.86);
+  }
+}
+
+/* ---- 虚拟键盘按钮条 ----
+   系统键盘从屏幕下方弹出时会盖住页面底部，所以这条按钮要**贴着键盘上沿**。
+   用 position:fixed + env(safe-area-inset-bottom) 处理 iPhone 刘海屏。
+   键盘弹出后可视区变矮，浏览器会把 fixed 元素重新定位到可视区底部，
+   于是按钮自动停在键盘正上方。 */
+/* ---- 底部栏栈 ----
+   触屏手柄、虚拟键盘栏、底栏都放在这一个文档流容器里。
+
+   为什么不用 position:fixed：fixed 元素脱离文档流、不占高度，上面的
+   画面区（main, flex:1）根本不知道它存在，于是按整屏高度排版，
+   结果就是「键盘一弹出来画面被顶出屏幕」。而且 fixed 的栏之间要互相
+   让位，只能靠 calc 手算，多一条栏就必然算错。
+
+   改成文档流之后：main 自动收缩到剩下的高度，几条栏自然上下堆叠，
+   既不会互相压住，也不需要任何手动让位计算。 */
+.bottom-stack {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- 顶栏虚拟键盘开关 ----
+   和「关于」按钮同一套外观；打开时高亮，一眼看出当前状态。 */
+.topbar-kb {
+  padding: 3px 9px;
+  font-size: 12px;
+  color: #8b949e;
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.topbar-kb:hover {
+  color: #c9d1d9;
+  border-color: #484f58;
+}
+
+/* 键盘已展开：高亮成主题蓝，和「收起」语义对应 */
+.topbar-kb.on {
+  color: #58a6ff;
+  border-color: #1f6feb;
+  background: rgba(56, 139, 253, 0.12);
+}
+
+/* ---- 顶栏「关于」按钮 ---- */
+.topbar-about {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #8b949e;
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.topbar-about:hover {
+  color: #c9d1d9;
+  border-color: #484f58;
+}
+
+/* ---- 关于弹窗 ---- */
+.about-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.about-box {
+  width: 100%;
+  max-width: 380px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.about-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #30363d;
+}
+
+.about-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.about-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: #8b949e;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.about-close:hover {
+  color: #e6edf3;
+  background: #21262d;
+}
+
+.about-body {
+  padding: 14px;
+}
+
+.about-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.about-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.about-value {
+  font-size: 13px;
+  color: #e6edf3;
+  word-break: break-all;
+}
+
+/* 版本号用等宽字体，数字更好认 */
+.about-ver {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: #58a6ff;
+}
+
+.about-link {
+  color: #58a6ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}
+
+.about-link-inline {
+  font-size: 12px;
+}
+
+.about-note {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #8b949e;
+  border-top: 1px solid #21262d;
+}
+
+/* 窄屏：弹窗几乎占满宽度，按钮加大便于点按 */
+@media (max-width: 420px) {
+  .about-box {
+    max-width: none;
+  }
+
+  .about-close {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+.touch-bar {
+  flex: 0 0 auto;
+  /* 上边多留 2px：overflow:hidden 会裁掉按键外发光/投影的上沿 */
+  padding: 8px 10px 6px;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  /* 手柄已用 .pad-wrap 的 scale 兜住窄屏，不需要横向滚动 ——
+     overflow-x:auto 反而会在缩放时冒出滚动条，把底栏顶高。 */
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ 移动端 */
+
+@media (max-width: 820px) {
+  /* 窄屏顶栏要塞下 7 项（品牌/版本/学习机/状态/fps/模式/面板按钮）。
+     390px 一行放不下，会互相挤到重叠 —— 收紧间距和字号，并允许换行兜底。 */
+  .topbar {
+    gap: 8px;
+    padding: 7px 10px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .brand {
+    gap: 6px;
+  }
+
+  .topbar-right {
+    gap: 7px;
+  }
+
+  /* 顶栏里的每项都不许被压扁、不许换行，宁可折到第二行 */
+  .topbar-right > *,
+  .brand > * {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .brand-ver {
+    font-size: 10px;
+  }
+
+  .tag-learn {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+
+  .status {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+
+  .fps,
+  .mode-badge {
+    font-size: 10px;
+  }
+
+  /* 侧栏离开文档流（fixed），stage 只剩画面区，独占全部可用高度 */
+  .stage {
+    flex-direction: column;
+  }
+
+  /* 画面靠上对齐，不在竖直方向居中。
+     手机上可用高度本来就紧，居中会让上方空一截、下方又贴着下栏，
+     靠上对齐后画面紧接顶栏，下面的控制板才有地方展开。 */
+  .screen-area {
+    flex: 1 1 auto;
+    padding: 8px;
+    align-items: flex-start;
+    justify-content: center;
+    /* 下栏展开时把画面上推，避免被浮层压住下半部分 */
+    transition: padding-bottom 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* 下栏展开时，给画面区留出下栏的高度，画面整体上移、不被遮挡。
+     下栏 max-height 是 62vh，这里让出 40vh —— 既保证不挡画面主体，
+     又不至于把画面压得太小（留 40vh 给画面 + 顶栏）。 */
+  .stage:has(.sidebar.open) .screen-area {
+    padding-bottom: 40vh;
+  }
+
+  /* ---- 窄屏：右侧栏变**下栏**，从底部滑出 ----
+     手机上从右侧滑出会挡住画面主体，而且横向空间本来就紧。
+     从底部滑出符合手指从下往上拉的直觉，也让画面留够高度。
+
+     默认展开：一进来就能看到全部面板，不至于以为界面缺了加载按钮。 */
+  /* 抽屉容器：把手 + 面板合成一列，整体贴底。
+     把手在面板上沿并且永远留在屏幕上 —— 面板收起后仍有入口把它拉回来。 */
+  .drawer {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* 抬到底栏之上：收起时容器只剩把手那一行，若贴 0 会和底栏完全重合、互相压住。
+       还要再加上触屏手柄的高度 —— 手柄打开时它占着底栏上方一整条，
+       抽屉若只让开底栏，把手就会压在**手柄最后一行按键上**（实测手机上
+       把手 24px 高、正好糊住手柄底部）。--touchbar-h 由 App 在渲染手柄时设。 */
+    /* 让位值 = 底部栏栈的实测总高度（由 App 写入 --stack-h）。
+       栈里可能有底栏、触屏手柄、虚拟键盘栏的任意组合。 */
+    bottom: var(--stack-h, 0px);
+    /* --touchbar-h 由 :root:has(.touch-bar) 一处统一设，见文件末尾。 */
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .sidebar {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    /* 桌面端的固定宽度在这里必须撤掉，否则手机上抽屉会被撑到 280px 而不是满宽 */
+    min-width: 0;
+    max-height: 62vh;
+    flex-basis: auto;
+    flex: 0 1 auto;
+    pointer-events: auto;
+    padding: 10px;
+    border-left: none;
+    /* 上沿的圆角和边框归把手那条，面板接在它下面，避免叠出两道线两层圆角 */
+    border-top: none;
+    border-radius: 0;
+    overflow-y: auto;
+    /* 毛玻璃：半透明底 + 模糊身后画面。面板盖住屏幕时还能透出下面的颜色，
+       比整块不透明更轻，也更像真机的控制面板。 */
+    background: rgba(22, 27, 34, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    transition:
+      transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.18s ease;
+    z-index: 20;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.7);
+  }
+
+  /* 收起：面板整体滑出屏幕外，不占布局高度。
+     容器是贴底的 flex 列，面板让出空间后只剩把手那一行落在屏幕底边。 */
+  .sidebar:not(.open) {
+    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+    /* 让出布局空间，否则把手仍被顶在面板上方、面板空着占位 */
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .sidebar.open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 下栏把手：抽屉容器里的第一行，永远可见、可点。
+     面板收起来时容器只剩它这一行，于是把手贴在屏幕底边；展开时被顶到面板上沿。
+     用真实按钮而不是伪元素 —— 伪元素收不到点击，手指按上去会被当成画面触摸。 */
+  .drawer-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 24px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    /* 和面板同一套毛玻璃底：透明地浮在画面上既看不出是把手，
+       也分不清哪里能点。圆角跟上沿呼应，视觉上和面板连成一体。 */
+    background: rgba(22, 27, 34, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-top: 1px solid #30363d;
+    border-radius: 12px 12px 0 0;
+    cursor: pointer;
+    touch-action: none;
+    pointer-events: auto;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.7);
+  }
+
+
+  /* 面板内的卡片跟着走半透明：毛玻璃底上再压一层不透明色块，
+     会把下面的画面全挡死，毛玻璃就白做了。 */
+  .sidebar .panel {
+    background: rgba(22, 27, 34, 0.55);
+    border-color: rgba(48, 54, 61, 0.8);
+  }
+
+  .drawer-handle-bar {
+    display: block;
+    width: 34px;
+    height: 4px;
+    background: #484f58;
+    border-radius: 2px;
+    transition: background 0.15s ease;
+  }
+
+  .drawer-handle:active .drawer-handle-bar {
+    background: #6e7681;
+  }
+
+
+  .bottombar {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+
+  /* 底栏高度给抽屉定位用：收起时把手停在底栏之上，不和它重叠。
+     底栏 padding 6px + 10px 字号的行高，实测 29px。 */
+  .app {
+    --bottombar-h: 29px;
+  }
+
+  .hint-mouse {
+    display: none;
+  }
+}
+
+/* 横屏手机：顶栏更紧凑，画面给足高度 */
+@media (max-width: 820px) and (orientation: landscape) {
+  .topbar {
+    padding: 5px 10px;
+  }
+
+  .bottombar {
+    display: none;
+  }
+
+  /* 横屏没有底栏，抽屉贴到屏幕最底边，不用再让位 */
+  .app {
+    --bottombar-h: 0px;
+  }
+
+  .screen-area {
+    padding: 4px;
+  }
+}

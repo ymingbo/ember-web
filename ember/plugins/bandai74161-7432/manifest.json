@@ -1,0 +1,31 @@
+{
+  "id": "bandai74161-7432",
+  "name": "Bandai 74161/7432",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "74161/7432 逻辑板（mapper 70、152）：$8000 起 16K 可切换，$C000 起 16K 固定为最后一个 bank；写入值的位 4-6 选 PRG bank，位 0-3 选 8K 的 CHR bank；mapper 152 由位 7 选单屏名称表，mapper 70 的名称表由板子固定（上电为垂直），但只要有游戏写入过位 7 为 1 的值就改由位 7 控制。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 70 },
+    { "mapper": 152 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": "last", "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "mirroringControl", "bits": 1, "description": "名称表是否由写入值的位 7 控制" }
+  ],
+  "nametable": "header"
+}

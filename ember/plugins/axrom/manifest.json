@@ -1,0 +1,29 @@
+{
+  "id": "axrom",
+  "name": "AxROM",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "AxROM（mapper 7）：PRG 整个 32K 切换，写入值的低 4 位选 bank；写入值的位 4 选单屏名称表（0 为第一页，1 为第二页）；上电为第一页；子 mapper 2 时有总线冲突。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 7 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "register", "bits": 8, "description": "最后写入的值（低 4 位为 PRG bank，位 4 为名称表页）" }
+  ],
+  "nametable": "single0"
+}

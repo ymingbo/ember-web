@@ -1,0 +1,181 @@
+{
+  "$comment": "cartridges 模块：加载 NES 文件（解析、匹配插件、装配主机、插入卡槽）、取出卡带与卡带信息；open 由外壳弹出文件选择窗口后调用 load。规则见 docs/04-调试服务.md 第 4.2 节。",
+  "module": "cartridges",
+  "types": {
+    "RecentCartridge": {
+      "type": "object",
+      "description": "最近打开的清单里的一项：给界面看的显示名与编号，不含路径。",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "description": "编号：本次运行内有效，用于 openRecent" },
+        "name": { "type": "string", "description": "显示名：文件名" }
+      },
+      "required": ["id", "name"]
+    },
+    "CartridgeHeader": {
+      "type": "object",
+      "description": "NES 文件头里的信息（不装配就能得到）。",
+      "properties": {
+        "path": { "type": "string", "description": "文件路径" },
+        "mapper": { "type": "integer", "minimum": 0, "description": "mapper 号" },
+        "variant": { "type": "integer", "minimum": 0, "description": "变体号（同一 mapper 号的不同卡带）" },
+        "prgSize": { "type": "integer", "minimum": 0, "description": "PRG-ROM 字节数" },
+        "chrSize": { "type": "integer", "minimum": 0, "description": "CHR-ROM 字节数；0 表示用 CHR-RAM" },
+        "mirroring": { "type": "string", "enum": ["horizontal", "vertical", "four"], "description": "文件头里的镜像方式" },
+        "battery": { "type": "boolean", "description": "是否带电池备份的 RAM" },
+        "crc32Prg": { "type": "string", "description": "PRG-ROM 的 CRC-32（8 位大写十六进制）" },
+        "crc32All": { "type": "string", "description": "PRG-ROM 与 CHR-ROM 合在一起的 CRC-32（8 位大写十六进制）" }
+      },
+      "required": ["path", "mapper", "variant", "prgSize", "chrSize", "mirroring", "battery", "crc32Prg", "crc32All"]
+    },
+    "HeaderMatch": {
+      "type": "object",
+      "description": "按文件头匹配到的插件。",
+      "properties": {
+        "pluginId": { "type": "string", "description": "插件标识" },
+        "pluginName": { "type": "string", "description": "插件名称" },
+        "pluginVersion": { "type": "string", "description": "插件版本" },
+        "host": { "type": "string", "description": "会装配的主机型号" },
+        "devices": { "type": "array", "items": { "type": "string", "enum": ["mouse"] }, "description": "插件声明的外设，目前只有 mouse（鼠标）" }
+      },
+      "required": ["pluginId", "pluginName", "pluginVersion", "host", "devices"]
+    },
+    "MatchFailure": {
+      "type": "object",
+      "description": "匹配插件失败的原因。",
+      "properties": {
+        "code": { "type": "string", "description": "错误码：mappers.noMatch、mappers.conflict 或 mappers.hostUnknown" },
+        "message": { "type": "string", "description": "说明" }
+      },
+      "required": ["code", "message"]
+    },
+    "LoadedCartridge": {
+      "type": "object",
+      "description": "加载完成的卡带与加载后的运行状态。",
+      "properties": {
+        "cartridge": { "$ref": "runtime#/types/CartridgeSummary" },
+        "state": { "$ref": "runtime#/types/RuntimeState" }
+      },
+      "required": ["cartridge", "state"]
+    }
+  },
+  "requests": {
+    "load": {
+      "description": "读取 NES 文件，解析文件头，按 mapper 号与变体匹配插件，装配主机并插入卡槽；已有的卡带与主机被替换，失败时原有的保持不变。匹配失败的错误码是 mappers.noMatch、mappers.conflict、mappers.hostUnknown，插件加载失败的是 mappers.notFound、mappers.invalidPackage、mappers.limitExceeded。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "NES 文件的路径，由外壳根据用户选择的文件给出" },
+          "powerOn": { "type": "boolean", "description": "装入后是否上电，默认 true" },
+          "resume": { "type": "boolean", "description": "上电后是否直接运行，默认 true；powerOn 为 false 时无效" }
+        },
+        "required": ["path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "cartridge": { "$ref": "runtime#/types/CartridgeSummary" },
+          "state": { "$ref": "runtime#/types/RuntimeState" }
+        },
+        "required": ["cartridge", "state"]
+      },
+      "errors": ["cartridges.fileNotFound", "cartridges.fileUnreadable", "cartridges.notInes", "cartridges.truncated", "cartridges.unsupportedFormat", "cartridges.invalidHeader"]
+    },
+    "parseHeader": {
+      "description": "只解析 NES 文件头并预览匹配结果，不装配主机、不改变正在运行的卡带与主机。文件头解析失败时返回错误；解析成功但没有匹配的插件时 header 照常返回，matchError 说明原因。",
+      "mainOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "NES 文件的路径" }
+        },
+        "required": ["path"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "header": { "$ref": "#/types/CartridgeHeader", "description": "文件头里的信息" },
+          "match": { "$ref": "#/types/HeaderMatch", "description": "匹配到的插件；没有匹配时没有这一项" },
+          "matchError": { "$ref": "#/types/MatchFailure", "description": "匹配失败的原因；匹配成功时没有这一项" }
+        },
+        "required": ["header"]
+      },
+      "errors": ["cartridges.fileNotFound", "cartridges.fileUnreadable", "cartridges.notInes", "cartridges.truncated", "cartridges.unsupportedFormat", "cartridges.invalidHeader"]
+    },
+    "eject": {
+      "description": "取出卡带：主机随之拆除，电源状态变为断电；没有卡带时没有效果。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "state": { "$ref": "runtime#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": []
+    },
+    "info": {
+      "description": "当前卡带的描述、匹配到的插件与存储区清单。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "cartridge": { "$ref": "runtime#/types/CartridgeSummary" } },
+        "required": ["cartridge"]
+      },
+      "errors": ["cartridges.empty"]
+    }
+  },
+  "mainRequests": {
+    "open": {
+      "description": "弹出系统文件选择窗口（只显示 .nes），把用户选定的文件交给 cartridges.load；用户取消选择时 canceled 为 true，不是错误。给出 droppedId 时不弹窗口，直接用拖入窗口的那个文件。",
+      "params": {
+        "type": "object",
+        "properties": { "droppedId": { "type": "integer", "minimum": 1, "description": "拖入窗口的文件的编号（拖放时由外壳登记，路径只在外壳里）；不给时弹出文件选择窗口" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "canceled": { "type": "boolean", "description": "用户是否取消了选择" },
+          "loaded": { "$ref": "#/types/LoadedCartridge", "description": "加载结果；取消时没有这一项" }
+        },
+        "required": ["canceled"]
+      },
+      "errors": ["cartridges.droppedNotFound", "cartridges.fileNotFound", "cartridges.fileUnreadable", "cartridges.notInes", "cartridges.truncated", "cartridges.unsupportedFormat", "cartridges.invalidHeader"]
+    },
+    "recent": {
+      "description": "最近打开的卡带清单（最近的在前，最多 10 个）：只给显示名与本次运行内有效的编号，路径只保存在外壳；打开卡带成功之前就已记入清单，加载失败的会被移出。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/types/RecentCartridge" },
+            "description": "清单，最近的在前"
+          }
+        },
+        "required": ["items"]
+      },
+      "errors": []
+    },
+    "openRecent": {
+      "description": "重新打开最近打开清单里的一个卡带：按编号取出路径交给 cartridges.load（powerOn、resume 都用默认值）；加载失败的卡带会从清单里移出。",
+      "params": {
+        "type": "object",
+        "properties": { "id": { "type": "integer", "minimum": 1, "description": "recent 给出的编号" } },
+        "required": ["id"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "loaded": { "$ref": "#/types/LoadedCartridge", "description": "加载结果" } },
+        "required": ["loaded"]
+      },
+      "errors": ["cartridges.recentNotFound", "cartridges.fileNotFound", "cartridges.fileUnreadable", "cartridges.notInes", "cartridges.truncated", "cartridges.unsupportedFormat", "cartridges.invalidHeader"]
+    }
+  },
+  "events": {
+    "loaded": {
+      "description": "卡带装配完成。",
+      "data": {
+        "type": "object",
+        "properties": { "cartridge": { "$ref": "runtime#/types/CartridgeSummary" } },
+        "required": ["cartridge"]
+      }
+    }
+  }
+}

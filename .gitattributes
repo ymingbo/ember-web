@@ -1,0 +1,9 @@
+*.exe binary
+*.dll binary
+*.lib binary
+*.o binary
+*.chr binary
+*.nes binary
+*.img binary
+*.png binary
+*.tgz binary

@@ -1,0 +1,36 @@
+{
+  "id": "smb2j",
+  "name": "SMB2J",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "超级马里奥兄弟 2 日版盗版卡（mapper 304）：以 4K 为单位映射 PRG，$8000-$FFFF 是两个 16K 半区，$4022 位 0 选半区（PRG 至少 64K 时）；$5000、$6000、$7000 固定为最后三个 4K 页；$4122 写入非零时 4096 个周期后发出一次 IRQ。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 304 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "p-8000", "bus": "cpu", "range": "$8000-$8FFF", "storage": "prg", "size": 4096, "initial": 0, "access": "r" },
+    { "id": "p-9000", "bus": "cpu", "range": "$9000-$9FFF", "storage": "prg", "size": 4096, "initial": 1, "access": "r" },
+    { "id": "p-a000", "bus": "cpu", "range": "$A000-$AFFF", "storage": "prg", "size": 4096, "initial": 2, "access": "r" },
+    { "id": "p-b000", "bus": "cpu", "range": "$B000-$BFFF", "storage": "prg", "size": 4096, "initial": 3, "access": "r" },
+    { "id": "p-c000", "bus": "cpu", "range": "$C000-$CFFF", "storage": "prg", "size": 4096, "initial": 4, "access": "r" },
+    { "id": "p-d000", "bus": "cpu", "range": "$D000-$DFFF", "storage": "prg", "size": 4096, "initial": 5, "access": "r" },
+    { "id": "p-e000", "bus": "cpu", "range": "$E000-$EFFF", "storage": "prg", "size": 4096, "initial": 6, "access": "r" },
+    { "id": "p-f000", "bus": "cpu", "range": "$F000-$FFFF", "storage": "prg", "size": 4096, "initial": 7, "access": "r" },
+    { "id": "p-5000", "bus": "cpu", "range": "$5000-$5FFF", "storage": "prg", "size": 4096, "initial": -3, "access": "r" },
+    { "id": "p-6000", "bus": "cpu", "range": "$6000-$6FFF", "storage": "prg", "size": 4096, "initial": -2, "access": "r" },
+    { "id": "p-7000", "bus": "cpu", "range": "$7000-$7FFF", "storage": "prg", "size": 4096, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4022", "write": true },
+    { "bus": "cpu", "range": "$4122", "write": true }
+  ],
+  "nametable": "header"
+}

@@ -1,0 +1,21 @@
+[
+  { "file": "yuxing_v9.2-98.bin", "machine": "yuxing",  "label": "裕兴 V9.2 · 98型卡", "group": "裕兴" },
+  { "file": "yuxing_v9.2-f.bin",  "machine": "yuxing",  "label": "裕兴 V9.2 · F 型卡", "group": "裕兴" },
+  { "file": "yuxing_v9.0-98.bin", "machine": "yuxing",  "label": "裕兴 V9.0 · 98型卡", "group": "裕兴" },
+  { "file": "yuxing_v8.3-d.bin",  "machine": "yuxing",  "label": "裕兴 V8.3 · D 型卡", "group": "裕兴" },
+  { "file": "yuxing_v8.2-d.bin",  "machine": "yuxing",  "label": "裕兴 V8.2 · D 型卡", "group": "裕兴" },
+  { "file": "yuxing_v8.0-c.bin",  "machine": "yuxing",  "label": "裕兴 V8.0 · C 型卡", "group": "裕兴" },
+
+  { "file": "bbg98_bios.bin",     "machine": "bbg98",   "label": "步步高 98 型",           "group": "步步高" },
+  { "file": "bbg1_bios.bin",      "machine": "bbg1",    "label": "步步高 软驱一号",        "group": "步步高" },
+
+  { "file": "sb97.bin",           "machine": "sb97",    "label": "小霸王 SB-97",           "group": "小霸王" },
+  { "file": "sb2000_bios.bin",    "machine": "sb2000",  "label": "小霸王 SB-2000",         "group": "小霸王" },
+
+  { "file": "pec9588.bin",        "machine": "pec9588", "label": "金字塔 PEC-9588",        "group": "金字塔" },
+  { "file": "pec586.bin",         "machine": "pec586",  "label": "金字塔 PEC-586",         "group": "金字塔" },
+  { "file": "pec686f.bin",        "machine": "pec586",  "label": "金字塔 PEC-686F",        "group": "金字塔" },
+
+  { "file": "cec1_v1.21.bin",     "machine": "cec1",    "label": "中华学习机 CEC-I v1.21", "group": "中华学习机" },
+  { "file": "cec1_v1.1a.bin",     "machine": "cec1",    "label": "中华学习机 CEC-I v1.1a", "group": "中华学习机" }
+]

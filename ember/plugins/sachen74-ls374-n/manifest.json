@@ -1,0 +1,30 @@
+{
+  "id": "sachen74-ls374-n",
+  "name": "Sachen 74LS374N",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Sachen 74LS374N（mapper 150、243）：$4100 选寄存器、$4101 写其低 3 位（读 $4101 读出所选寄存器）；寄存器 5 选 32K 的 PRG，寄存器 2、4、6 拼出 8K 的 CHR，寄存器 7 的位 1-2 选镜像；mapper 150 有一个 DIP 开关（设置项 dip，打开时寄存器只有 2 位）。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 150 },
+    { "mapper": 243 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4100-$7FFF", "read": true, "write": true }
+  ],
+  "settings": [
+    { "key": "dip", "label": "DIP 开关", "kind": "switch", "default": false, "description": "只对 mapper 150 有效：打开时寄存器只有 2 位。" }
+  ],
+  "nametable": "custom"
+}

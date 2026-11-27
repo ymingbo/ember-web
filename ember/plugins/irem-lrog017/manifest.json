@@ -1,0 +1,34 @@
+{
+  "id": "irem-lrog017",
+  "name": "Irem LROG017",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Irem LROG017（mapper 77）：PRG 整个 32K 切换（写入值低 4 位）；$0000 起 2K 是 CHR ROM（写入值高 4 位选 bank），其余 6K 是 CHR RAM；名称表是卡带自带的 4K 显存（四屏）；有总线冲突。",
+  "host": ["fc"],
+  "busConflict": true,
+  "match": [
+    { "mapper": 77 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr" },
+    { "id": "chr-ram", "kind": "ram", "size": 6144 },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$07FF", "storage": "chr", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0FFF", "storage": "chr-ram", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$17FF", "storage": "chr-ram", "size": 2048, "initial": 1, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1FFF", "storage": "chr-ram", "size": 2048, "initial": 2, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": { "state": "register", "bank": [{ "window": "prg-8000-32k", "shift": 0, "mask": 15 },{ "window": "chr-0000", "shift": 4, "mask": 15 }] } }
+  ],
+  "state": [
+    { "name": "register", "bits": 8, "description": "最后写入的值（低 4 位为 PRG bank，高 4 位为 CHR bank）" }
+  ],
+  "nametable": "four"
+}

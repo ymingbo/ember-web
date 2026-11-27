@@ -1,0 +1,31 @@
+{
+  "id": "caltron41",
+  "name": "Caltron 41",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Caltron 6-in-1（mapper 41）：$6000-$67FF 的写入由地址选 32K 的 PRG bank（低 3 位）、CHR 外层 bank（地址位 2-3 对应的两位）与名称表镜像（位 5）；$8000-$FFFF 的写入在 PRG bank 为 4-7 时选 CHR 内层 bank（写入值低 2 位）；复位回到第 0 组。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 41 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$67FF", "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "prgBank", "bits": 3, "description": "32K 的 PRG bank 号" },
+    { "name": "chrBank", "bits": 4, "description": "8K 的 CHR bank 号（高 2 位为外层，低 2 位为内层）" }
+  ],
+  "nametable": "header"
+}

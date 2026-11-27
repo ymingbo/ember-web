@@ -1,0 +1,34 @@
+{
+  "id": "plq",
+  "name": "声像教学卡 PLQ",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "声像教学卡“普里奇”版（mapper 172，PRG 16K，如 plq.nes）：磁带机放出声像磁带，右声道是数据线，卡上的 PAL 逻辑在 $8000-$9FFF 写入时锁存，在 $A000-$BFFF 读出，写入的那一刻磁带的电平也进入逻辑；$C000-$DFFF 是 8K RAM；$E000-$FFFF 是 PRG 的后 8K；CHR 用 8K CHR RAM。",
+  "host": ["fc"],
+  "match": [{ "mapper": 172, "prgSize": 16384 }],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": 8192 } },
+    { "id": "ram", "kind": "ram", "size": 8192 }
+  ],
+  "windows": [
+    { "id": "ram", "bus": "cpu", "range": "$C000-$DFFF", "storage": "ram", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-e", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "chr", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$9FFF", "read": { "value": 0 }, "write": { "update": { "table": "pal", "into": "pal" } } },
+    { "bus": "cpu", "range": "$A000-$BFFF", "read": { "state": "pal" } }
+  ],
+  "state": [{ "name": "pal", "bits": 8, "initial": 255, "description": "PAL 逻辑的输出锁存，在 $A000-$BFFF 读出" }],
+  "tables": [
+    {
+      "id": "pal",
+      "index": [{ "from": "state", "name": "pal" }, { "from": "address", "shift": 1, "bits": 2 }, { "from": "data", "shift": 0, "bits": 4 }, { "from": "tape" }],
+      "bits": 8
+    }
+  ],
+  "tape": { "comparator": { "low": -1000, "high": -999, "invert": true } },
+  "nametable": "horizontal"
+}

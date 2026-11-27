@@ -1,0 +1,31 @@
+{
+  "id": "mapper-57",
+  "name": "Mapper 57",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "GK 6-in-1 合集卡（mapper 57）：$8000-$87FF 写第一个寄存器、$8800-$8FFF 写第二个寄存器（按地址位 15 与 11 区分）；第二个寄存器的位 3 选名称表镜像，位 4 选 PRG 为 32K 还是 16K 重复，位 5-7 选 PRG bank；CHR 8K 的 bank 由两个寄存器拼成。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 57 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "reg0", "bits": 8, "description": "第一个寄存器" },
+    { "name": "reg1", "bits": 8, "description": "第二个寄存器" }
+  ],
+  "nametable": "header"
+}

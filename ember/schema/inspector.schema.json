@@ -1,0 +1,588 @@
+{
+  "$comment": "inspector 模块：检查器。读写内存空间、解析总线地址、读写芯片与卡带的状态。全部只经调试服务开放（debugOnly）。单步在 runtime.step。规则见 docs/04-调试服务.md 第 4.5 节。",
+  "module": "inspector",
+  "types": {
+    "MemorySpaceInfo": {
+      "type": "object",
+      "description": "一个内存空间。",
+      "properties": {
+        "id": { "type": "string", "description": "空间标识：cpu、ppu（总线视角，读不产生副作用）；board.ram 等主板上的存储；chip.oam、chip.palette 等芯片内的存储；cart.<存储区标识> 卡带上的存储区" },
+        "description": { "type": "string", "description": "说明" },
+        "size": { "type": "integer", "minimum": 1, "description": "大小（字节），地址从 0 到大小减 1" },
+        "writable": { "type": "boolean", "description": "能否写入；卡带的 ROM 存储区不能写" }
+      },
+      "required": ["id", "description", "size", "writable"]
+    },
+    "AddressInfo": {
+      "type": "object",
+      "description": "一个总线地址对应的东西。",
+      "properties": {
+        "kind": { "type": "string", "enum": ["ram", "rom", "register", "none"], "description": "种类：ram 与 rom 是存储区里的字节；register 是芯片、设备或 mapper 脚本的寄存器；none 没有设备响应（读到总线上最近的值）" },
+        "region": { "type": "string", "description": "所在存储区的空间标识（如 board.ram、cart.prg），或寄存器所属的芯片（如 chip.ppu、cart.mapper）；没有时省略" },
+        "offset": { "type": "integer", "minimum": 0, "description": "在存储区里的偏移，或在寄存器组里的序号；没有时省略" },
+        "description": { "type": "string", "description": "说明" }
+      },
+      "required": ["kind", "description"]
+    },
+    "StateField": {
+      "type": "object",
+      "description": "一项状态。",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 64, "description": "状态项名称" },
+        "value": { "type": "integer", "description": "取值；标志位是 0 或 1" },
+        "description": { "type": "string", "description": "说明（读出时有，写入时可省略）" }
+      },
+      "required": ["name", "value"]
+    },
+    "Breakpoint": {
+      "type": "object",
+      "description": "一个断点。",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "description": "断点编号" },
+        "kind": { "type": "string", "enum": ["execute", "read", "write", "irq", "nmi", "brk", "reset"], "description": "种类：execute CPU 要执行这个地址的指令之前停下；read、write 总线读写这个范围里的地址，那条指令执行完后停下；irq、nmi、brk CPU 响应这种中断、处理程序的第一条指令执行之前停下；reset 上电或复位之后、第一条指令执行之前停下" },
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "地址范围的第一个地址；irq、nmi、brk、reset 没有地址范围，为 0" },
+        "endAddress": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "地址范围的最后一个地址（含）；单个地址时与 address 相同；irq、nmi、brk、reset 为 0" },
+        "hits": { "type": "integer", "minimum": 0, "description": "已经命中的次数（只算条件成立的命中）" },
+        "enabled": { "type": "boolean", "description": "是否启用；禁用的断点保留在表里，不触发" },
+        "condition": { "type": "string", "maxLength": 256, "description": "条件表达式，写法见 addBreakpoint；没有条件时省略" }
+      },
+      "required": ["id", "kind", "address", "endAddress", "hits", "enabled"]
+    },
+    "ByteCondition": {
+      "type": "object",
+      "description": "一个字节的取值条件：CPU 总线上这个地址的字节等于这个值。",
+      "properties": {
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "地址" },
+        "value": { "type": "integer", "minimum": 0, "maximum": 255, "description": "取值" }
+      },
+      "required": ["address", "value"]
+    },
+    "DisassembledInstruction": {
+      "type": "object",
+      "description": "一条反汇编的指令。",
+      "properties": {
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "指令的地址" },
+        "bytes": { "type": "string", "description": "指令字节，十六进制，空格隔开，如 A9 42" },
+        "text": { "type": "string", "description": "助记符与操作数，带有效地址与取值的注释，如 LDA $0180 = 33；写法同 nestest 日志，芯片寄存器类地址的取值显示 00" },
+        "unofficial": { "type": "boolean", "description": "是不是非官方指令" }
+      },
+      "required": ["address", "bytes", "text", "unofficial"]
+    },
+    "MemoryRangeSpec": {
+      "type": "object",
+      "description": "一段内存，CPU 总线上的地址。",
+      "properties": {
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "起始地址" },
+        "length": { "type": "integer", "minimum": 1, "maximum": 256, "description": "字节数" }
+      },
+      "required": ["address", "length"]
+    },
+    "WatchedValue": {
+      "type": "object",
+      "description": "一个监视中的状态项。",
+      "properties": {
+        "path": { "type": "string", "description": "状态路径，如 cpu.pc、ppu.scanline、mapper.prgBank" },
+        "value": { "type": "integer", "description": "当前取值" }
+      },
+      "required": ["path", "value"]
+    },
+    "ModuleState": {
+      "type": "object",
+      "description": "一个模块的状态。",
+      "properties": {
+        "module": { "type": "string", "description": "模块标识：cpu、ppu；卡带的脚本状态是 mapper" },
+        "writable": { "type": "boolean", "description": "状态是否可以用 setState 修改（cpu 的 cycles 除外）" },
+        "fields": { "type": "array", "items": { "$ref": "#/types/StateField" }, "description": "状态项" }
+      },
+      "required": ["module", "writable", "fields"]
+    },
+    "CallFrame": {
+      "type": "object",
+      "description": "调用栈的一帧。",
+      "properties": {
+        "kind": { "type": "string", "enum": ["jsr", "irq", "nmi", "brk"], "description": "种类：jsr 是 JSR 调用的子程序；irq、nmi、brk 是响应 IRQ、NMI 与 BRK 指令进入的处理程序" },
+        "callAddress": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "发起调用的位置：jsr 与 brk 是指令本身的地址；irq 与 nmi 是被打断的、还没有执行的那条指令的地址" },
+        "targetAddress": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "子程序或处理程序的入口地址" },
+        "returnAddress": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "返回之后执行的地址：jsr 是 JSR 后面的那条指令，brk 是 BRK 加 2，irq 与 nmi 是被打断的那条指令" },
+        "stackPointer": { "type": "integer", "minimum": 0, "maximum": 255, "description": "调用完成后的栈指针，返回地址压在它之上" }
+      },
+      "required": ["kind", "callAddress", "targetAddress", "returnAddress", "stackPointer"]
+    },
+    "ProfileEntry": {
+      "type": "object",
+      "description": "子程序统计里的一项。",
+      "properties": {
+        "kind": { "type": "string", "enum": ["root", "jsr", "irq", "nmi", "brk"], "description": "种类：root 是不在任何子程序与处理程序里的代码，其余同 CallFrame" },
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "入口地址；root 为 0" },
+        "calls": { "type": "integer", "minimum": 0, "description": "调用次数：完成的调用，加上读取时还没有返回的那一次；root 为 1" },
+        "inclusiveCycles": { "type": "integer", "minimum": 0, "description": "含被它调用的子程序与中断处理程序的 CPU 周期数；递归时里层的周期被重复计入" },
+        "exclusiveCycles": { "type": "integer", "minimum": 0, "description": "不含被它调用的子程序与中断处理程序的 CPU 周期数" }
+      },
+      "required": ["kind", "address", "calls", "inclusiveCycles", "exclusiveCycles"]
+    },
+    "DebugEvent": {
+      "type": "object",
+      "description": "事件记录里的一个事件。",
+      "properties": {
+        "frame": { "type": "integer", "minimum": 0, "description": "帧序号：从 0 起，每帧从第 0 行开始（与状态里的 ppu.frame 不同，它在画面完成的那一行就加 1）" },
+        "scanline": { "type": "integer", "minimum": 0, "description": "扫描线" },
+        "dot": { "type": "integer", "minimum": 0, "description": "点；按行处理的 PPU（6576）恒为 0" },
+        "kind": { "type": "string", "enum": ["read", "write", "irq", "nmi", "brk"], "description": "种类：read、write 是读写 $2000-$5FFF 的寄存器或写 $8000 以上的 mapper 寄存器；irq、nmi、brk 是 CPU 响应中断" },
+        "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "read、write 是被访问的地址；irq、nmi、brk 是处理程序的地址" },
+        "value": { "type": "integer", "minimum": 0, "maximum": 255, "description": "read、write 读到或写入的值；其余为 0" },
+        "pc": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "read、write 是发起访问的那条指令的地址；irq、nmi、brk 是返回地址" },
+        "cycles": { "type": "integer", "minimum": 0, "description": "事件发生时的 CPU 周期数" }
+      },
+      "required": ["frame", "scanline", "dot", "kind", "address", "value", "pc", "cycles"]
+    }
+  },
+  "requests": {
+    "listSpaces": {
+      "description": "列出全部内存空间：总线视角的 cpu 与 ppu，主板与芯片里的存储，以及卡带上的存储区（cart.<存储区标识>）。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "spaces": { "type": "array", "items": { "$ref": "#/types/MemorySpaceInfo" }, "description": "内存空间" } },
+        "required": ["spaces"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "readMemory": {
+      "description": "读一段内存，不改变主机的任何状态：cpu 与 ppu 空间里寄存器类地址读出 0（不读寄存器，所以不会清标志），卡带脚本的寄存器也不会被回调。数据以二进制帧返回（结果里的 data，见 docs/04-调试服务.md 第 2.3 节）。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "space": { "type": "string", "minLength": 1, "maxLength": 64, "description": "空间标识，见 listSpaces" },
+          "address": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "起始地址" },
+          "length": { "type": "integer", "minimum": 1, "maximum": 1048576, "description": "要读的字节数" }
+        },
+        "required": ["space", "address", "length"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "space": { "type": "string", "description": "空间标识" },
+          "address": { "type": "integer", "minimum": 0, "description": "起始地址" },
+          "length": { "type": "integer", "minimum": 1, "description": "字节数" },
+          "data": { "description": "读到的字节（二进制，以二进制帧送达）" }
+        },
+        "required": ["space", "address", "length"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.unknownSpace", "inspector.outOfRange"]
+    },
+    "writeMemory": {
+      "description": "写一段内存。cpu 与 ppu 空间的写经真实的总线，与 CPU 写一样有副作用（写寄存器会触发相应的行为）；卡带的 ROM 存储区不能写。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "space": { "type": "string", "minLength": 1, "maxLength": 64, "description": "空间标识，见 listSpaces" },
+          "address": { "type": "integer", "minimum": 0, "maximum": 4294967295, "description": "起始地址" },
+          "bytes": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 }, "minItems": 1, "maxItems": 65536, "description": "要写入的字节，每项 0 到 255" }
+        },
+        "required": ["space", "address", "bytes"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "space": { "type": "string", "description": "空间标识" },
+          "address": { "type": "integer", "minimum": 0, "description": "起始地址" },
+          "written": { "type": "integer", "minimum": 0, "description": "写入的字节数" }
+        },
+        "required": ["space", "address", "written"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.unknownSpace", "inspector.outOfRange", "inspector.readOnly"]
+    },
+    "resolve": {
+      "description": "解析一个总线地址：它落在哪块存储区的哪个偏移，或哪个寄存器；卡带的地址按当前的窗口映射（分页）解析，不回调脚本。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "space": { "type": "string", "enum": ["cpu", "ppu"], "description": "总线：cpu 或 ppu" },
+          "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "总线地址" }
+        },
+        "required": ["space", "address"]
+      },
+      "result": { "type": "object", "properties": { "target": { "$ref": "#/types/AddressInfo", "description": "解析结果" } }, "required": ["target"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.unknownSpace", "inspector.outOfRange"]
+    },
+    "getState": {
+      "description": "读状态：cpu（寄存器与周期数）、ppu（扫描线、点、帧数、滚动寄存器、标志）与卡带的脚本状态（mapper）。省略 module 时返回全部模块。读取在帧边界或暂停时进行，是一致的快照。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "module": { "type": "string", "minLength": 1, "maxLength": 64, "description": "模块标识；省略时返回全部" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": { "states": { "type": "array", "items": { "$ref": "#/types/ModuleState" }, "description": "各模块的状态" } },
+        "required": ["states"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidState"]
+    },
+    "snapshot": {
+      "description": "取得完整快照：各模块的状态、断点与监视项，以及此刻的 CPU 周期数，都在同一个时刻读出，是一致的。内存不在快照里，用 readMemory 读。省略 module 时包含全部模块。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "module": { "type": "string", "minLength": 1, "maxLength": 64, "description": "只取这个模块的状态；省略时取全部" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "cycles": { "type": "integer", "minimum": 0, "description": "自上电以来的 CPU 周期数" },
+          "states": { "type": "array", "items": { "$ref": "#/types/ModuleState" }, "description": "各模块的状态" },
+          "breakpoints": { "type": "array", "items": { "$ref": "#/types/Breakpoint" }, "description": "全部断点" },
+          "watches": { "type": "array", "items": { "$ref": "#/types/WatchedValue" }, "description": "全部监视项与当前取值" }
+        },
+        "required": ["cycles", "states", "breakpoints", "watches"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidState"]
+    },
+    "watch": {
+      "description": "监视一个状态项：它的取值变化时发事件 inspector.stateChanged。路径是 <模块>.<状态项>，如 cpu.pc、ppu.scanline、mapper.prgBank（状态项见 getState）。取值在每一帧完成后、单步、命中断点和检查请求执行完之后检查，一帧里变化多次只报告最后的取值。已经在监视的路径再监视没有效果。监视最多 64 项，属于检查器本身，不随卡带更换清除。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": { "path": { "type": "string", "minLength": 3, "maxLength": 128, "description": "状态路径" } }, "required": ["path"] },
+      "result": { "type": "object", "properties": { "watch": { "$ref": "#/types/WatchedValue", "description": "监视项与当前取值" } }, "required": ["watch"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidState", "inspector.watchLimit"]
+    },
+    "unwatch": {
+      "description": "取消监视。没有监视这个路径时返回 inspector.noWatch。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": { "path": { "type": "string", "minLength": 3, "maxLength": 128, "description": "状态路径" } }, "required": ["path"] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noWatch"]
+    },
+    "disassemble": {
+      "description": "从 address 起反汇编 count 条指令（CPU 总线上的地址）。读内存没有副作用；带索引的寻址用当前的 X、Y 算有效地址与注释里的取值；地址超过 $FFFF 时回到 $0000。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "起始地址" },
+          "count": { "type": "integer", "minimum": 1, "maximum": 256, "description": "指令条数，默认 16" }
+        },
+        "required": ["address"]
+      },
+      "result": { "type": "object", "properties": { "instructions": { "type": "array", "items": { "$ref": "#/types/DisassembledInstruction" }, "description": "反汇编的指令" } }, "required": ["instructions"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "cdlStart": {
+      "description": "开始代码与数据标记（CDL）：给卡带 PRG-ROM 的每个字节打标记，标记清零后，运行与单步执行的每条指令都记：Code（0x01，被当作指令执行，含操作数字节）、Data（0x02，被指令当数据读取，不含只写的存储指令、栈与中断向量）、JumpTarget（0x04，JMP 或成立的分支的目标）、SubEntry（0x08，JSR 的目标）。标记的是物理位置（按当前的分页换算）。记录属于当前的主机，装入新卡带后作废。需要已开机，卡带要有 PRG-ROM 存储区。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "size": { "type": "integer", "minimum": 1, "description": "PRG-ROM 的字节数，也是标记的字节数" } }, "required": ["size"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.cdlActive"]
+    },
+    "cdlStop": {
+      "description": "停止标记，已有的标记保留到下一次 cdlStart 或换卡带；已经停止时只返回统计。没有记录过时返回 inspector.noCdl。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "size": { "type": "integer", "minimum": 1, "description": "PRG-ROM 的字节数" },
+          "codeBytes": { "type": "integer", "minimum": 0, "description": "标了 Code 的字节数" },
+          "dataBytes": { "type": "integer", "minimum": 0, "description": "标了 Data 的字节数" }
+        },
+        "required": ["size", "codeBytes", "dataBytes"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noCdl"]
+    },
+    "cdlSave": {
+      "description": "把当前的标记写成调试输出目录下的文件：PRG-ROM 每个字节一个标记字节，没有文件头，位定义同 Mesen。记录中或停止后都可以保存。没有记录过时返回 inspector.noCdl。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "file": { "type": "string", "minLength": 1, "maxLength": 100, "description": "文件名，只能含字母、数字、点、下划线、短横线与空格，不含目录；省略时用 prg.cdl" } },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "保存的文件的完整路径" },
+          "size": { "type": "integer", "minimum": 1, "description": "PRG-ROM 的字节数，也是文件的字节数" },
+          "codeBytes": { "type": "integer", "minimum": 0, "description": "标了 Code 的字节数" },
+          "dataBytes": { "type": "integer", "minimum": 0, "description": "标了 Data 的字节数" }
+        },
+        "required": ["file", "size", "codeBytes", "dataBytes"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noCdl", "inspector.invalidFileName", "inspector.fileFailed"]
+    },
+    "traceStart": {
+      "description": "开始跟踪，内容记在内存里，traceStop 时写成调试输出目录下的文件。kind：instruction 每执行一条指令记一行（地址、指令字节、反汇编、寄存器与周期数，写法同 nestest 日志；芯片寄存器的取值显示 00）；io 每次访问 $2000-$5FFF（芯片、手柄口、卡带扩展寄存器）以及对 $8000 以上的写（mapper 寄存器）记一行（方向、地址、值、发起访问的指令地址与周期数）；irq 每次 CPU 响应 IRQ、NMI 或 BRK 记一行（种类、返回地址、处理程序地址、周期数）。单步与运行产生的内容都记，调试写内存不记。同时进行的记录最多 8 项，记录属于当前的主机，装入新卡带后作废。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["instruction", "io", "irq"], "description": "跟踪的种类" },
+          "file": { "type": "string", "minLength": 1, "maxLength": 100, "description": "文件名，只能含字母、数字、点、下划线、短横线与空格，不含目录；省略时按种类与编号生成（trace-编号.txt、calllog-编号.txt）。文件写在调试输出目录" },
+          "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "最多记录的行数，满了就不再记录，默认 100000" },
+          "unique": { "type": "boolean", "description": "只对 instruction 有效：每个地址只记第一次，默认 false" },
+          "ring": { "type": "boolean", "description": "环形：行数满了以后丢弃最早的行继续记录，可以用 traceRead 边记边读；为 false（默认）时行数满了就不再记录" }
+        },
+        "required": ["kind"]
+      },
+      "result": { "type": "object", "properties": { "id": { "type": "integer", "minimum": 1, "description": "记录编号" } }, "required": ["id"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidFileName", "inspector.recordingLimit"]
+    },
+    "traceStop": {
+      "description": "结束跟踪并把内容写成文件。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": { "id": { "type": "integer", "minimum": 1, "description": "traceStart 返回的记录编号" } }, "required": ["id"] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "保存的文件的完整路径" },
+          "lines": { "type": "integer", "minimum": 0, "description": "写入的行数" },
+          "truncated": { "type": "boolean", "description": "是否因为行数满了而少记了" }
+        },
+        "required": ["file", "lines", "truncated"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noRecording", "inspector.fileFailed"]
+    },
+    "callLogStart": {
+      "description": "开始调用记录：每次执行到 address 这条指令之前记一行，含寄存器、周期数、栈顶的若干字节（SP 之上，栈顶在前）与指定的内存段。内容记在内存里，callLogStop 时写成调试输出目录下的文件。同时进行的记录最多 8 项，记录属于当前的主机，装入新卡带后作废。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "要记录的指令地址" },
+          "stackBytes": { "type": "integer", "minimum": 0, "maximum": 32, "description": "每次记录栈顶的字节数，默认 0" },
+          "ranges": { "type": "array", "items": { "$ref": "#/types/MemoryRangeSpec" }, "maxItems": 4, "description": "每次记录的内存段，最多 4 段" },
+          "skip": { "type": "array", "items": { "$ref": "#/types/ByteCondition" }, "maxItems": 4, "description": "跳过条件，最多 4 项：执行到这条指令时，任何一项成立（这个地址上的字节等于这个值）就不记录这一次，用来滤掉不关心的调用" },
+          "file": { "type": "string", "minLength": 1, "maxLength": 100, "description": "文件名，只能含字母、数字、点、下划线、短横线与空格，不含目录；省略时按种类与编号生成（trace-编号.txt、calllog-编号.txt）。文件写在调试输出目录" },
+          "maxLines": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "最多记录的行数，满了就不再记录，默认 100000" }
+        },
+        "required": ["address"]
+      },
+      "result": { "type": "object", "properties": { "id": { "type": "integer", "minimum": 1, "description": "记录编号" } }, "required": ["id"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidFileName", "inspector.recordingLimit"]
+    },
+    "callLogStop": {
+      "description": "结束调用记录并把内容写成文件。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": { "id": { "type": "integer", "minimum": 1, "description": "callLogStart 返回的记录编号" } }, "required": ["id"] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "保存的文件的完整路径" },
+          "lines": { "type": "integer", "minimum": 0, "description": "写入的行数" },
+          "truncated": { "type": "boolean", "description": "是否因为行数满了而少记了" }
+        },
+        "required": ["file", "lines", "truncated"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noRecording", "inspector.fileFailed"]
+    },
+    "addBreakpoint": {
+      "description": "添加断点。断点在机器运行时生效（自由运行与 runtime.run 都会停下，发事件 runtime.breakpointHit，运行模式变为暂停）；单步（runtime.step）忽略断点；继续运行时会先越过刚命中的执行断点。断点属于当前的主机，装入新卡带后清空。地址是 CPU 总线上的地址。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["execute", "read", "write", "irq", "nmi", "brk", "reset"], "description": "种类：execute、read、write 要给 address；irq、nmi、brk 在 CPU 响应这种中断之后、处理程序的第一条指令执行之前停下，条件里的 address 是处理程序的地址；reset 在上电或复位（软、硬）之后、第一条指令执行之前停下，条件里的 address 是复位后的 PC。这四种不带地址范围，给了 address 与 endAddress 也忽略" },
+          "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "地址，或地址范围的第一个地址；execute、read、write 必填" },
+          "endAddress": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "地址范围的最后一个地址（含），省略时只有 address 一个地址" },
+          "condition": { "type": "string", "minLength": 1, "maxLength": 256, "description": "条件表达式：地址范围满足之后再求值，结果为 0 或求值失败（除以零）就当作没有命中，命中次数也不增加。数值写成 $C000、0xC000、0b1010 或十进制；变量（不分大小写）：a、x、y、sp、pc、p（也可写 status）、cycles（CPU 周期数）、frame、scanline、dot（PPU 的帧序号、扫描线与点，见 DebugEvent），以及读写断点的 address（被访问的地址）、value（读到或写入的值）、write（写为 1，读为 0），执行断点命中时 address 是指令地址、value 与 write 为 0；读内存：[地址] 读 CPU 总线上的一个字节，{地址} 读 16 位小端数值，读不产生副作用（寄存器类地址读出 0）；运算符 + - * / % & | ^ ~ << >> == != < <= > >= && || ! 与括号，优先级同 C，按 64 位整数计算，非 0 为真；省略时没有条件。例：a == $40 && [$10] != 0" }
+        },
+        "required": ["kind"]
+      },
+      "result": { "type": "object", "properties": { "breakpoint": { "$ref": "#/types/Breakpoint", "description": "添加的断点" } }, "required": ["breakpoint"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.invalidBreakpoint", "inspector.breakpointLimit"]
+    },
+    "listBreakpoints": {
+      "description": "列出全部断点，按编号升序。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "breakpoints": { "type": "array", "items": { "$ref": "#/types/Breakpoint" }, "description": "断点" } }, "required": ["breakpoints"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "removeBreakpoint": {
+      "description": "删除一个断点。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": { "id": { "type": "integer", "minimum": 1, "description": "断点编号" } }, "required": ["id"] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noBreakpoint"]
+    },
+    "clearBreakpoints": {
+      "description": "删除全部断点。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "removed": { "type": "integer", "minimum": 0, "description": "删除的个数" } }, "required": ["removed"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "updateBreakpoint": {
+      "description": "修改断点的启用状态或条件，没有给出的项不变；禁用的断点保留在表里（编号、地址与命中次数不变），不触发。条件写法不对时一项也不改。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "minimum": 1, "description": "断点编号" },
+          "enabled": { "type": "boolean", "description": "是否启用" },
+          "condition": { "type": "string", "maxLength": 256, "description": "新的条件表达式，写法见 addBreakpoint；空字符串表示去掉条件" }
+        },
+        "required": ["id"]
+      },
+      "result": { "type": "object", "properties": { "breakpoint": { "$ref": "#/types/Breakpoint", "description": "修改之后的断点" } }, "required": ["breakpoint"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noBreakpoint", "inspector.invalidCondition"]
+    },
+    "callStack": {
+      "description": "读调用栈，最里层的在前。主机上电（或复位）起就一直在跟踪 JSR、RTS、RTI 与中断：程序用 PHA 与 RTS 当跳转、或直接改栈指针时，按栈指针弹出返回地址已经不在栈上的帧。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "frames": { "type": "array", "items": { "$ref": "#/types/CallFrame" }, "description": "调用栈，最里层的在前" } }, "required": ["frames"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "profilerStart": {
+      "description": "开始子程序统计：统计清零，之后经过的 CPU 周期按子程序与中断处理程序累计（含与不含它们调用的下层）；已经在统计时重新开始。统计属于当前的主机，装入新卡带后作废；复位时调用栈清空，统计的时间起点重新计。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "profilerStop": {
+      "description": "停止子程序统计并返回结果，结果保留到下一次 profilerStart；已经停止时返回停止那一刻的结果。没有开始过时返回 inspector.noProfile。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "active": { "type": "boolean", "description": "统计是否还在进行（这里总是 false）" },
+          "totalCycles": { "type": "integer", "minimum": 0, "description": "统计期间经过的 CPU 周期数" },
+          "entries": { "type": "array", "items": { "$ref": "#/types/ProfileEntry" }, "description": "各子程序与处理程序，按不含子程序的周期数从大到小排列，root 一项在里面" }
+        },
+        "required": ["active", "totalCycles", "entries"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noProfile"]
+    },
+    "profilerGet": {
+      "description": "读子程序统计的当前结果，不停止统计；进行中时还在栈上的帧按此刻返回计。没有开始过时返回 inspector.noProfile。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "active": { "type": "boolean", "description": "统计是否还在进行" },
+          "totalCycles": { "type": "integer", "minimum": 0, "description": "统计期间经过的 CPU 周期数" },
+          "entries": { "type": "array", "items": { "$ref": "#/types/ProfileEntry" }, "description": "各子程序与处理程序，按不含子程序的周期数从大到小排列，root 一项在里面" }
+        },
+        "required": ["active", "totalCycles", "entries"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noProfile"]
+    },
+    "eventsStart": {
+      "description": "开始事件记录：记录清零，之后运行与单步产生的事件（对 $2000-$5FFF 寄存器的读写、对 $8000 以上的 mapper 寄存器的写、CPU 响应 IRQ、NMI 与 BRK）连同发生时 PPU 的帧、扫描线与点记在内存里，容量满了丢弃最早的；已经在记录时重新开始。PPU 寄存器的访问位置是精确的，其他访问的位置按所在点的时间推算（奇数帧少一个点的预渲染行按此刻的背景开关计）；按行处理的 PPU（sb2000 的 6576 模式）只有行。调试写内存不记。记录属于当前的主机，装入新卡带后作废。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "maxEvents": { "type": "integer", "minimum": 1, "maximum": 1000000, "description": "最多保留的事件数，默认 65536" } },
+        "required": []
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "eventsStop": {
+      "description": "停止事件记录，已有的事件保留到下一次 eventsStart 或换卡带；已经停止时没有效果。没有开始过时返回 inspector.noEventLog。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noEventLog"]
+    },
+    "eventsGet": {
+      "description": "读事件记录里的事件，按发生的先后排列，记录进行中与停止后都可以读。没有开始过时返回 inspector.noEventLog。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "fromFrame": { "type": "integer", "minimum": 0, "description": "只读这个帧序号及以后的事件；省略时读全部" },
+          "maxEvents": { "type": "integer", "minimum": 1, "maximum": 100000, "description": "最多读的事件数，超过时取最新的，默认 20000" }
+        },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "active": { "type": "boolean", "description": "记录是否还在进行" },
+          "frame": { "type": "integer", "minimum": 0, "description": "现在的帧序号" },
+          "dropped": { "type": "integer", "minimum": 0, "description": "因为容量满了而被丢弃的最早的事件数（从记录开始累计）" },
+          "events": { "type": "array", "items": { "$ref": "#/types/DebugEvent" }, "description": "事件" }
+        },
+        "required": ["active", "frame", "dropped", "events"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noEventLog"]
+    },
+    "getPalette": {
+      "description": "读 64 个颜色号现在显示的颜色：按主机当前的 PPU（6576 模式与 FC 兼容模式各用自己的）和 $2001 的颜色强调与灰度位换算。chip.palette 里的一项就是一个颜色号（低 6 位）。数据以二进制帧返回（结果里的 data）：64 项，每项 4 个字节，依次为 R、G、B、A（A 恒为 255）。需要已开机。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "count": { "type": "integer", "minimum": 1, "description": "颜色的个数（64）" },
+          "data": { "description": "颜色（二进制，以二进制帧送达）：每项 4 个字节，依次为 R、G、B、A" }
+        },
+        "required": ["count"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported"]
+    },
+    "traceRead": {
+      "description": "读一项正在进行的跟踪或调用记录的一段内容，不结束记录。行号是记录开始以来的绝对行号（从 0 起），环形记录丢弃最早的行后行号仍然不变，调用方从上一次的 total 继续读就不会重复也不会漏。记录结束后不能再读（内容已经写成文件）。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "minimum": 1, "description": "traceStart 或 callLogStart 返回的记录编号" },
+          "from": { "type": "integer", "minimum": 0, "description": "要读的第一行的行号，默认 0；早于还留着的最早一行时从最早一行读起" },
+          "maxLines": { "type": "integer", "minimum": 1, "maximum": 10000, "description": "最多读的行数，默认 1000" }
+        },
+        "required": ["id"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "first": { "type": "integer", "minimum": 0, "description": "lines 第一行的行号" },
+          "total": { "type": "integer", "minimum": 0, "description": "记录开始以来已经产生的行数，也是下一行的行号" },
+          "oldest": { "type": "integer", "minimum": 0, "description": "还留着的最早一行的行号（环形记录丢弃最早的行后大于 0）" },
+          "truncated": { "type": "boolean", "description": "非环形记录是否因为行数满了而少记了" },
+          "lines": { "type": "array", "items": { "type": "string" }, "description": "读到的行" }
+        },
+        "required": ["first", "total", "oldest", "truncated", "lines"]
+      },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.noRecording"]
+    },
+    "setState": {
+      "description": "修改一个模块的状态：目前只有 cpu 可以改（pc、a、x、y、sp、status，只在指令之间生效），其余模块只读。先全部检查，有任何一项不合格就一项也不改。需要已开机。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "module": { "type": "string", "minLength": 1, "maxLength": 64, "description": "模块标识" },
+          "fields": { "type": "array", "items": { "$ref": "#/types/StateField" }, "minItems": 1, "maxItems": 16, "description": "要修改的状态项" }
+        },
+        "required": ["module", "fields"]
+      },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/ModuleState", "description": "修改之后的状态" } }, "required": ["state"] },
+      "errors": ["inspector.noCartridge", "inspector.notPowered", "inspector.unsupported", "inspector.readOnly", "inspector.invalidState"]
+    }
+  },
+  "events": {
+    "stateChanged": {
+      "description": "监视的状态项取值变了。同一次检查里变化的各项依次发出；监视项属于检查器，重新上电或换卡带之后的变化也会报告。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "状态路径" },
+          "oldValue": { "type": "integer", "description": "上一次检查时的取值" },
+          "newValue": { "type": "integer", "description": "现在的取值" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "检查时的 CPU 周期数" }
+        },
+        "required": ["path", "oldValue", "newValue", "cycles"]
+      }
+    }
+  }
+}

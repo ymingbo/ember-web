@@ -1,0 +1,204 @@
+{
+  "$comment": "input 模块：手柄绑定（界面设置，所有机型共用）、Family BASIC 键盘的接入状态（不保存）与经调试服务注入输入。键盘与鼠标原始事件交给机器自己处理；游戏手柄的原始事件与键盘按键经手柄绑定变成手柄口的按键；pad 直接设置主机手柄口，不经绑定。注入的请求只经调试服务开放（debugOnly），界面的输入走消息端口。规则见 docs/04-调试服务.md 第 4.4 节与 docs/05-界面.md 第 4.6 节。",
+  "module": "input",
+  "types": {
+    "PadKeyBinding": {
+      "type": "object",
+      "description": "手柄的一个键绑定到键盘的一个物理键。",
+      "properties": {
+        "button": { "type": "string", "enum": ["a", "b", "select", "start", "up", "down", "left", "right", "turboA", "turboB"], "description": "手柄的键：turboA、turboB 是连发 A、连发 B" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32, "description": "物理键位，取 KeyboardEvent.code，如 KeyZ、ArrowUp、Enter" }
+      },
+      "required": ["button", "code"]
+    },
+    "PadGamepadBinding": {
+      "type": "object",
+      "description": "手柄的一个键绑定到实体手柄的一个按钮或一个轴的一个方向。",
+      "properties": {
+        "button": { "type": "string", "enum": ["a", "b", "select", "start", "up", "down", "left", "right", "turboA", "turboB"], "description": "手柄的键" },
+        "kind": { "type": "string", "enum": ["button", "axis"], "description": "来源：button 是一个按钮，axis 是一个轴的一个方向" },
+        "index": { "type": "integer", "minimum": 0, "maximum": 31, "description": "按钮或轴的编号，同浏览器 Gamepad API 的数组下标" },
+        "direction": { "type": "string", "enum": ["negative", "positive"], "description": "轴的方向：negative 是小于 -0.5，positive 是大于 0.5；只有 axis 用" }
+      },
+      "required": ["button", "kind", "index"]
+    },
+    "PadGamepadAssignment": {
+      "type": "object",
+      "description": "一个玩家槽位用的实体手柄，以及它的键绑定。",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256, "description": "手柄的设备标识，取 Gamepad.id（含设备名）" },
+        "occurrence": { "type": "integer", "minimum": 0, "maximum": 15, "description": "同一个设备标识连着多个手柄时，按编号从小到大排的第几个，从 0 开始" },
+        "bindings": { "type": "array", "items": { "$ref": "#/types/PadGamepadBinding" }, "maxItems": 10, "description": "手柄的键的绑定；没有写的键没有绑定，同一个键只能写一次" }
+      },
+      "required": ["id", "occurrence", "bindings"]
+    },
+    "PadSlot": {
+      "type": "object",
+      "description": "一个玩家槽位：键盘的绑定，以及可选的一个实体手柄。",
+      "properties": {
+        "keys": { "type": "array", "items": { "$ref": "#/types/PadKeyBinding" }, "maxItems": 10, "description": "键盘的绑定；没有写的键没有绑定，同一个键只能写一次" },
+        "gamepad": { "$ref": "#/types/PadGamepadAssignment" }
+      },
+      "required": ["keys"]
+    }
+  },
+  "requests": {
+    "getBindings": {
+      "description": "读取手柄绑定：两个玩家槽位（对应手柄口 1、2）。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/types/PadSlot" }, "minItems": 2, "maxItems": 2, "description": "玩家槽位，第 1 项是手柄口 1" }
+        },
+        "required": ["slots"]
+      },
+      "errors": []
+    },
+    "setBindings": {
+      "description": "替换全部手柄绑定：核心校验后保存到文件，并发出 input.bindingsChanged；内容没有变化时不发事件。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/types/PadSlot" }, "minItems": 2, "maxItems": 2, "description": "玩家槽位，第 1 项是手柄口 1" }
+        },
+        "required": ["slots"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/types/PadSlot" }, "minItems": 2, "maxItems": 2, "description": "保存之后的玩家槽位" }
+        },
+        "required": ["slots"]
+      },
+      "errors": ["input.invalidBindings"]
+    },
+    "resetBindings": {
+      "description": "把手柄绑定恢复为出厂默认；内容没有变化时不发事件。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/types/PadSlot" }, "minItems": 2, "maxItems": 2, "description": "恢复之后的玩家槽位" }
+        },
+        "required": ["slots"]
+      },
+      "errors": []
+    },
+    "getFamilyKeyboard": {
+      "description": "读取是否给经典 FC 接上了 Family BASIC 键盘；每次启动都是未接入，不保存。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "connected": { "type": "boolean", "description": "是否已接入" } },
+        "required": ["connected"]
+      },
+      "errors": []
+    },
+    "setFamilyKeyboard": {
+      "description": "给经典 FC 接入或断开 Family BASIC 键盘：对当前主机立即生效，之后装配的主机也按它设置；接入后电脑键盘的按键按 Family BASIC 键盘的键位送给机器，不再当作手柄按键；学习机用自己内置的键盘，不受影响。状态只在本次运行里保留，不保存；有变化时发出 input.familyKeyboardChanged。",
+      "params": {
+        "type": "object",
+        "properties": { "connected": { "type": "boolean", "description": "true 接入，false 断开" } },
+        "required": ["connected"]
+      },
+      "result": {
+        "type": "object",
+        "properties": { "connected": { "type": "boolean", "description": "设置之后是否已接入" } },
+        "required": ["connected"]
+      },
+      "errors": []
+    },
+    "key": {
+      "description": "按下或松开一个物理键：键盘属于机器时交给机器，否则按手柄绑定变成手柄口的按键；没有开机时被丢弃。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "minLength": 1, "maxLength": 32, "description": "物理键位，取 KeyboardEvent.code，如 KeyW、Space、Numpad1、Enter" },
+          "down": { "type": "boolean", "description": "true 按下，false 松开" }
+        },
+        "required": ["code", "down"]
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": []
+    },
+    "mouse": {
+      "description": "鼠标事件，交给机器；坐标单位是标准帧（256x240）的像素，省略的数值按 0 处理。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "enum": ["move", "down", "up", "wheel", "leave"], "description": "事件种类" },
+          "x": { "type": "number", "description": "指针在标准帧上的横坐标，可以超出画面范围" },
+          "y": { "type": "number", "description": "指针在标准帧上的纵坐标，可以超出画面范围" },
+          "dx": { "type": "number", "description": "相对上一次事件的横向位移" },
+          "dy": { "type": "number", "description": "相对上一次事件的纵向位移" },
+          "buttons": { "type": "integer", "minimum": 0, "maximum": 7, "description": "当前按住的按键位：1 左键、2 右键、4 中键" },
+          "wheel": { "type": "number", "description": "滚轮的滚动量，向下为正，只有 wheel 事件用" }
+        },
+        "required": ["kind"]
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": []
+    },
+    "gamepad": {
+      "description": "游戏手柄一个手柄的当前全部状态，按手柄绑定变成手柄口的按键；拔掉时 connected 为 false，按键与轴省略。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "maximum": 7, "description": "手柄编号，同浏览器 Gamepad API 的 index" },
+          "id": { "type": "string", "maxLength": 256, "description": "手柄的设备标识，取 Gamepad.id；省略时按空处理" },
+          "connected": { "type": "boolean", "description": "是否连着" },
+          "buttons": { "type": "array", "items": { "type": "boolean" }, "maxItems": 32, "description": "各按键是否按下，顺序同浏览器的标准映射" },
+          "axes": { "type": "array", "items": { "type": "number" }, "maxItems": 16, "description": "各轴的值，范围 -1 到 1，顺序同浏览器的标准映射" }
+        },
+        "required": ["index", "connected"]
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": []
+    },
+    "pad": {
+      "description": "直接设置主机某个手柄口上标准手柄的按键，不经 mapper 脚本；位：1 A、2 B、4 选择、8 开始、16 上、32 下、64 左、128 右。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "port": { "type": "integer", "minimum": 0, "maximum": 7, "description": "手柄口编号，从 0 开始" },
+          "buttons": { "type": "integer", "minimum": 0, "maximum": 255, "description": "按键掩码，1 表示按下" }
+        },
+        "required": ["port", "buttons"]
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["input.invalidPort"]
+    },
+    "releaseAll": {
+      "description": "松开经 key 按下的全部键、把经 pad 设置过的手柄口清零、并让经 gamepad 注入的手柄断开。",
+      "debugOnly": true,
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": []
+    }
+  },
+  "events": {
+    "bindingsChanged": {
+      "description": "手柄绑定变了（界面修改、恢复默认都会发出）。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "slots": { "type": "array", "items": { "$ref": "#/types/PadSlot" }, "minItems": 2, "maxItems": 2, "description": "新的玩家槽位" }
+        },
+        "required": ["slots"]
+      }
+    },
+    "familyKeyboardChanged": {
+      "description": "Family BASIC 键盘的接入状态变了（界面或调试服务设置后发出，没有变化时不发）。",
+      "data": {
+        "type": "object",
+        "properties": { "connected": { "type": "boolean", "description": "新的接入状态" } },
+        "required": ["connected"]
+      }
+    }
+  }
+}

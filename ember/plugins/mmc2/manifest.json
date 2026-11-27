@@ -1,0 +1,31 @@
+{
+  "id": "mmc2",
+  "name": "MMC2",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "任天堂 MMC2（mapper 9）：$A000 选 8K 程序页（其余三页固定为最后三页），$B000-$E000 为左右两个 4K 图案区各存两个页号，由 PPU 取到 $FD、$FE 图块的地址切换，$F000 选镜像；由主机里的 MMC2 电路实现。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 9 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": -3, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$0FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$1FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$A000-$FFFF", "write": { "circuit": "mmc2" } }
+  ],
+  "circuits": [
+    { "id": "mmc2", "type": "mmc2", "wire": { "prg": ["prg-8000", "prg-a000", "prg-c000", "prg-e000"], "chr": ["chr-0000", "chr-1000"], "mirroring": true } }
+  ],
+  "nametable": "header"
+}

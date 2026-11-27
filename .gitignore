@@ -1,0 +1,34 @@
+# ---- 构建产物 ----
+/build/
+*.tgz
+.cache/
+
+# Emscripten 编译产物（由 ember-web/scripts/build-wasm.sh 生成）
+ember-web/web/public/wasm/
+ember-web/web/src/ember/ember_wasm.js
+ember-web/build/
+
+# 前端构建产物
+ember-web/web/dist/
+ember-web/web/node_modules/
+node_modules/
+
+# 契约代码由 schema-gen 生成
+ember/core/src/contracts/*/generated/
+
+# ---- 日志与临时文件 ----
+*.log
+!ember/core/test/data/**/*.log
+*.bak
+*.orig
+*~
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---- 编辑器 ----
+.vscode/*
+!.vscode/tasks.json
+.idea/
+compile_flags.txt
+**/.vscode/c_cpp_properties.json

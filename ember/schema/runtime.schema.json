@@ -1,0 +1,259 @@
+{
+  "$comment": "runtime 模块：机器的运行状态、电源、复位、暂停与继续；运行状态变化与每帧事件。规则见 docs/04-调试服务.md 第 3、4.1、5 节；run、step、setSpeed 在后续阶段加入。",
+  "module": "runtime",
+  "types": {
+    "CartridgeStorage": {
+      "type": "object",
+      "description": "卡带上的一块存储区。",
+      "properties": {
+        "id": { "type": "string", "description": "清单里的存储区标识" },
+        "kind": { "type": "string", "enum": ["rom", "ram"], "description": "种类" },
+        "size": { "type": "integer", "minimum": 0, "description": "实际容量（字节）" },
+        "battery": { "type": "boolean", "description": "是否带电池" }
+      },
+      "required": ["id", "kind", "size", "battery"]
+    },
+    "CartridgeSummary": {
+      "type": "object",
+      "description": "插在卡槽里的卡带：文件头描述、匹配到的插件与存储区清单。",
+      "properties": {
+        "path": { "type": "string", "description": "NES 文件的路径" },
+        "mapper": { "type": "integer", "minimum": 0, "description": "mapper 号" },
+        "variant": { "type": "integer", "minimum": 0, "description": "变体" },
+        "prgSize": { "type": "integer", "minimum": 0, "description": "PRG 的字节数" },
+        "chrSize": { "type": "integer", "minimum": 0, "description": "CHR 的字节数，没有 CHR 时为 0" },
+        "mirroring": { "type": "string", "enum": ["horizontal", "vertical", "four"], "description": "文件头里的镜像方式" },
+        "battery": { "type": "boolean", "description": "文件头里的电池标志" },
+        "crc32Prg": { "type": "string", "minLength": 8, "maxLength": 8, "description": "PRG 的 CRC-32，8 位十六进制" },
+        "crc32All": { "type": "string", "minLength": 8, "maxLength": 8, "description": "PRG 加 CHR 的 CRC-32，8 位十六进制" },
+        "pluginId": { "type": "string", "description": "匹配到的插件标识" },
+        "pluginName": { "type": "string", "description": "匹配到的插件显示名称" },
+        "pluginVersion": { "type": "string", "description": "匹配到的插件版本" },
+        "host": { "type": "string", "description": "装配的主机型号" },
+        "devices": { "type": "array", "items": { "type": "string", "enum": ["mouse"] }, "description": "匹配到的插件声明的外设，目前只有 mouse（鼠标）" },
+        "storage": { "type": "array", "items": { "$ref": "#/types/CartridgeStorage" }, "description": "存储区清单" }
+      },
+      "required": ["path", "mapper", "variant", "prgSize", "chrSize", "mirroring", "battery", "crc32Prg", "crc32All", "pluginId", "pluginName", "pluginVersion", "host", "devices", "storage"]
+    },
+    "RuntimeState": {
+      "type": "object",
+      "description": "运行状态：电源与运行模式；运行模式只在通电时有意义，断电时为 paused。",
+      "properties": {
+        "power": { "type": "string", "enum": ["off", "on"], "description": "电源：off 断电，on 通电" },
+        "mode": { "type": "string", "enum": ["paused", "running"], "description": "运行模式：paused 暂停，running 连续运行" }
+      },
+      "required": ["power", "mode"]
+    }
+  },
+  "requests": {
+    "status": {
+      "description": "返回电源、运行模式、主机型号、卡带、帧号、总周期数、速度与是否带鼠标。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "power": { "type": "string", "enum": ["off", "on"], "description": "电源" },
+          "mode": { "type": "string", "enum": ["paused", "running"], "description": "运行模式" },
+          "machine": { "type": "string", "description": "主机型号；没有装入卡带时没有这一项" },
+          "romLabel": { "type": "string", "description": "整机机型（学习机）开机所用 ROM 的版本：认得出的 ROM 是版本名或型号名（如 V9.0-98、98型），认不出时是文件名；经典 FC 与没有主机时没有这一项" },
+          "cartridge": { "$ref": "#/types/CartridgeSummary", "description": "当前的卡带；没有时没有这一项" },
+          "frame": { "type": "integer", "minimum": 0, "description": "自上电以来完成的帧数" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "自上电以来的 CPU 周期数" },
+          "speed": { "type": "integer", "minimum": 1, "description": "速度百分比，默认 100；maxSpeed 为 true 时不限速，这一项保持最近一次设置的百分比" },
+          "maxSpeed": { "type": "boolean", "description": "是否不限速（最快）" },
+          "mouse": { "type": "boolean", "description": "机器现在是否带鼠标：学习机在 6576 模式下带串口鼠标（进入 FC 兼容模式后没有），经典 FC 只有卡带的 mapper 插件声明了 mouse 外设才有；没有主机时为 false" }
+        },
+        "required": ["power", "mode", "frame", "cycles", "speed", "maxSpeed", "mouse"]
+      }
+    },
+    "powerOn": {
+      "description": "上电：创建或重置全部芯片，卡带的存储区重新从文件载入；默认进入暂停，resume 为 true 时直接运行；已通电时等同硬复位。",
+      "params": {
+        "type": "object",
+        "properties": { "resume": { "type": "boolean", "description": "上电后是否直接运行，默认 false" } },
+        "required": []
+      },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": ["runtime.noCartridge"]
+    },
+    "powerOff": {
+      "description": "断电：停止运行，芯片状态丢弃；卡带保持插着。已断电时没有效果。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": []
+    },
+    "reset": {
+      "description": "复位：soft 只发 RESET 线，不改变电源与运行模式；hard 断电后再上电，运行模式保持。",
+      "params": {
+        "type": "object",
+        "properties": { "kind": { "type": "string", "enum": ["soft", "hard"], "description": "复位方式" } },
+        "required": ["kind"]
+      },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": ["runtime.noCartridge", "runtime.notPowered"]
+    },
+    "pause": {
+      "description": "暂停：已暂停时没有效果；只在通电时有效。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": ["runtime.notPowered"]
+    },
+    "resume": {
+      "description": "继续：按真实帧率连续运行；已在运行时没有效果；只在通电时有效。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": { "state": { "$ref": "#/types/RuntimeState" } }, "required": ["state"] },
+      "errors": ["runtime.notPowered"]
+    },
+    "run": {
+      "description": "授权运行：不限速地连续运行指定的量后暂停（运行中不输出声音，每帧之间照常处理输入等命令）。授权量 frames、cycles、instructions、scanlines 必须给且只能给一个：frames 完成这么多帧；cycles 至少这么多 CPU 周期（指令不被打断，实际周期数可能多几个）；instructions 这么多条指令（含随后响应的中断序列）；scanlines PPU 的扫描线推进这么多行。命中断点时自动停止。wait 为 true 时等运行结束才返回结果（结果里有 stopped）；否则立即返回，运行结束时发事件 runtime.runFinished。已在授权运行中时旧的被打断，由新的替代；等待中的请求被取消（如连接断开）时运行被打断并暂停。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "frames": { "type": "integer", "minimum": 1, "maximum": 10000000, "description": "要运行的帧数" },
+          "cycles": { "type": "integer", "minimum": 1, "maximum": 100000000000, "description": "要运行的 CPU 周期数" },
+          "instructions": { "type": "integer", "minimum": 1, "maximum": 100000000000, "description": "要运行的指令条数" },
+          "scanlines": { "type": "integer", "minimum": 1, "maximum": 1000000000, "description": "要推进的扫描线行数" },
+          "wait": { "type": "boolean", "description": "是否等运行结束再返回，默认 false" }
+        },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "state": { "$ref": "#/types/RuntimeState", "description": "返回时的运行状态" },
+          "frames": { "type": "integer", "minimum": 0, "description": "实际运行的帧数；wait 为 false 时为 0" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "实际经过的 CPU 周期数；wait 为 false 时为 0" },
+          "instructions": { "type": "integer", "minimum": 0, "description": "实际执行的指令条数；只有按 cycles、instructions、scanlines 授权且 wait 为 true 时有" },
+          "stopped": { "type": "string", "enum": ["completed", "interrupted", "powerOff", "breakpoint", "error"], "description": "停止原因（只有 wait 为 true 时有）：completed 运行完授权的量；interrupted 被暂停、继续、硬复位、换卡带、新的授权运行或请求被取消打断；powerOff 断电；breakpoint 命中断点；error 运行出错" }
+        },
+        "required": ["state", "frames", "cycles"]
+      },
+      "errors": ["runtime.noCartridge", "runtime.notPowered", "runtime.debugUnsupported"]
+    },
+    "setSpeed": {
+      "description": "设置运行速度：percent 是相对真实速度的百分比，max 为 true 时不限速、尽快运行；两者给一个，都不给时恢复 100%。只影响自由运行（继续、上电后运行），授权运行与单步不受影响。速度不是 100% 或不限速时不输出声音（采样丢弃，恢复 100% 后继续）。设置不保存，每次启动都是 100%。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "percent": { "type": "integer", "minimum": 10, "maximum": 1000, "description": "速度百分比，如 50 是半速，200 是两倍速" },
+          "max": { "type": "boolean", "description": "为 true 时不限速（最快）；不能与 percent 同时给" }
+        },
+        "required": []
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "speed": { "type": "integer", "minimum": 1, "description": "设置之后的速度百分比" },
+          "maxSpeed": { "type": "boolean", "description": "设置之后是否不限速" }
+        },
+        "required": ["speed", "maxSpeed"]
+      },
+      "errors": []
+    },
+    "step": {
+      "description": "单步：先暂停（正在进行的授权运行被打断），再按单位运行指定的数量后保持暂停。instruction 一条指令（含随后响应的中断序列）；cycle 至少这么多 CPU 周期（指令不被打断，实际周期数可能多几个）；scanline PPU 的扫描线推进这么多行；frame 完成这么多帧画面。结果里的 pc 是停下时下一条要执行的指令地址。经过的帧会照常显示。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "unit": { "type": "string", "enum": ["instruction", "cycle", "scanline", "frame"], "description": "单位" },
+          "count": { "type": "integer", "minimum": 1, "maximum": 100000, "description": "数量，默认 1；要运行更长时间用 runtime.run" }
+        },
+        "required": ["unit"]
+      },
+      "result": {
+        "type": "object",
+        "properties": {
+          "state": { "$ref": "#/types/RuntimeState", "description": "单步后的运行状态（总是暂停）" },
+          "instructions": { "type": "integer", "minimum": 0, "description": "实际执行的指令数" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "实际经过的 CPU 周期数" },
+          "frames": { "type": "integer", "minimum": 0, "description": "期间完成的帧数" },
+          "pc": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "停下时程序计数器的值，即下一条要执行的指令地址" }
+        },
+        "required": ["state", "instructions", "cycles", "frames", "pc"]
+      },
+      "errors": ["runtime.noCartridge", "runtime.notPowered", "runtime.debugUnsupported"]
+    },
+    "setFrameEvents": {
+      "description": "设置 runtime.frame 事件的发布间隔：每 frames 帧发一次，0 表示不发（默认）。这是全局设置，对订阅了 runtime.frame 的所有连接生效。",
+      "debugOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "frames": { "type": "integer", "minimum": 0, "maximum": 3600, "description": "间隔帧数，0 表示不发" } },
+        "required": ["frames"]
+      },
+      "result": { "type": "object", "properties": { "frames": { "type": "integer", "minimum": 0, "description": "设置之后的间隔帧数" } }, "required": ["frames"] },
+      "errors": []
+    }
+  },
+  "events": {
+    "stateChanged": {
+      "description": "电源或运行模式改变（含装入或取出卡带）。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "power": { "type": "string", "enum": ["off", "on"], "description": "新的电源状态" },
+          "mode": { "type": "string", "enum": ["paused", "running"], "description": "新的运行模式" },
+          "reason": { "type": "string", "enum": ["load", "eject", "powerOn", "powerOff", "reset", "pause", "resume", "run", "runEnded", "step", "breakpoint", "error", "inputChanged", "speed"], "description": "原因：run 开始授权运行，runEnded 授权运行跑完后暂停，step 单步，breakpoint 命中断点后暂停，speed 运行速度变了，inputChanged 机器的输入设备变了（如学习机进入 FC 兼容模式后不再带鼠标），电源与运行模式不变" }
+        },
+        "required": ["power", "mode", "reason"]
+      }
+    },
+    "frame": {
+      "description": "每完成一帧发出；默认不订阅，开启后才发布。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "frame": { "type": "integer", "minimum": 0, "description": "帧号" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "自上电以来的 CPU 周期数" },
+          "pc": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "CPU 的程序计数器" }
+        },
+        "required": ["frame", "cycles", "pc"]
+      }
+    },
+    "runFinished": {
+      "description": "授权运行（run）结束：跑完、或被暂停、继续、复位、断电、换卡带、新的授权运行或出错打断。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "frames": { "type": "integer", "minimum": 0, "description": "实际运行的帧数" },
+          "cycles": { "type": "integer", "minimum": 0, "description": "实际经过的 CPU 周期数" },
+          "stopped": { "type": "string", "enum": ["completed", "interrupted", "powerOff", "breakpoint", "error"], "description": "停止原因，含义同 run 的结果" }
+        },
+        "required": ["frames", "cycles", "stopped"]
+      }
+    },
+    "breakpointHit": {
+      "description": "命中断点，机器已暂停（自由运行与授权运行都会停下）。执行断点停在指令执行之前，读写断点停在那条指令执行完之后；断点由 inspector.addBreakpoint 添加。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "minimum": 1, "description": "断点编号" },
+          "kind": { "type": "string", "enum": ["execute", "read", "write", "irq", "nmi", "brk", "reset"], "description": "断点种类" },
+          "address": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "执行断点是将要执行的指令地址；读写断点是被访问的地址；irq、nmi、brk 是处理程序的地址；reset 是复位后的 PC" },
+          "value": { "type": "integer", "minimum": 0, "maximum": 255, "description": "读写断点读到或写入的值；其余种类没有这一项" },
+          "pc": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "停下时的程序计数器" },
+          "a": { "type": "integer", "minimum": 0, "maximum": 255, "description": "累加器" },
+          "x": { "type": "integer", "minimum": 0, "maximum": 255, "description": "X 寄存器" },
+          "y": { "type": "integer", "minimum": 0, "maximum": 255, "description": "Y 寄存器" },
+          "sp": { "type": "integer", "minimum": 0, "maximum": 255, "description": "栈指针" },
+          "status": { "type": "integer", "minimum": 0, "maximum": 255, "description": "状态寄存器" }
+        },
+        "required": ["id", "kind", "address", "pc", "a", "x", "y", "sp", "status"]
+      }
+    },
+    "error": {
+      "description": "运行中的错误，如 mapper 脚本异常；发出后模拟器已暂停。",
+      "data": {
+        "type": "object",
+        "properties": {
+          "module": { "type": "string", "description": "出错的模块" },
+          "code": { "type": "string", "description": "错误码" },
+          "message": { "type": "string", "description": "面向用户的说明" }
+        },
+        "required": ["module", "code", "message"]
+      }
+    }
+  }
+}

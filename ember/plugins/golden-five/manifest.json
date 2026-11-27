@@ -1,0 +1,30 @@
+{
+  "id": "golden-five",
+  "name": "Golden Five",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Golden Five（mapper 104）：$8000 起 16K 可切换，$C000 起 16K 默认固定为第 15 个 bank；$C000-$FFFF 写入值的低 4 位更新 PRG bank 的低 4 位；$8000-$9FFF 写入的值位 3 为 1 时，用位 0-2 更新高 3 位，同时 $C000 起的 16K 改为高 3 位加第 15 个 bank。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 104 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 15, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "prgReg", "bits": 8, "description": "PRG bank 寄存器（低 4 位与高 3 位分别更新）" }
+  ],
+  "nametable": "header"
+}

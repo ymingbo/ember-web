@@ -1,0 +1,31 @@
+{
+  "id": "mmc4",
+  "name": "MMC4",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "任天堂 MMC4（mapper 10）：$A000 选 16K 程序页（$C000 固定为最后一页），$B000-$E000 为左右两个 4K 图案区各存两个页号，由 PPU 取到 $FD、$FE 图块的地址（8 个地址为一组）切换，$F000 选镜像，$6000 为 PRG RAM。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 10 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$0FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$1FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$A000-$FFFF", "write": { "circuit": "mmc4" } }
+  ],
+  "circuits": [
+    { "id": "mmc4", "type": "mmc4", "wire": { "prg": ["prg-8000-16k", "prg-c000-16k"], "chr": ["chr-0000", "chr-1000"], "mirroring": true } }
+  ],
+  "nametable": "header"
+}

@@ -1,0 +1,81 @@
+{
+  "$comment": "系统模块：应用版本与核心版本（用于验证从界面到 C++ 核心的整条请求链路），以及外壳自己处理的系统能力：日志目录、帮助文档、应用升级。",
+  "module": "system",
+  "types": {
+    "UpdateStatus": {
+      "type": "object",
+      "description": "应用升级的状态；只由外壳维护。",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["unsupported", "idle", "checking", "downloading", "ready", "upToDate", "error"],
+          "description": "unsupported 当前运行方式不支持升级（开发版、免安装目录、非 Windows），idle 还没有检查过，checking 正在检查，downloading 发现新版本、正在下载，ready 新版本已下载、重启后生效，upToDate 已是最新版本，error 检查或下载失败"
+        },
+        "version": { "type": "string", "minLength": 1, "description": "新版本的版本号，只在 ready 时有，升级服务器没有给出版本号时没有这一项" },
+        "message": { "type": "string", "minLength": 1, "description": "失败的原因，只在 error 时有" }
+      },
+      "required": ["state"]
+    }
+  },
+  "requests": {
+    "version": {
+      "description": "返回应用版本与核心版本。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": {
+          "appVersion": { "type": "string", "minLength": 1, "description": "应用版本，取自程序的版本号" },
+          "coreVersion": { "type": "string", "minLength": 1, "description": "核心版本，取自核心的构建参数" }
+        },
+        "required": ["appVersion", "coreVersion"]
+      }
+    }
+  },
+  "mainRequests": {
+    "openLogDirectory": {
+      "description": "用系统的文件管理器打开日志目录（目录不存在时先创建）；路径由外壳决定，界面不能指定。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["system.logDirectoryUnavailable"]
+    },
+    "openHelp": {
+      "description": "在应用内弹出帮助文档窗口（已经打开时提到最前）；文档是随应用带的静态页面，位置由外壳决定，界面不能指定，只能从固定的几页里选。",
+      "params": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "string", "enum": ["changelog"], "description": "要打开的页面：changelog 更新记录；不传时打开首页，已经打开的窗口不传时不改变当前页" }
+        },
+        "required": []
+      },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["system.helpUnavailable"]
+    },
+    "updateStatus": {
+      "description": "读取应用升级的当前状态；状态变化时外壳另外推送给界面。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/UpdateStatus", "description": "当前状态" } },
+        "required": ["status"]
+      },
+      "errors": []
+    },
+    "checkUpdate": {
+      "description": "开始检查更新；有新版本时自动下载。请求在开始检查后立即返回当前状态，检查与下载的进展经状态推送给界面；正在检查、正在下载、已经下载好或不支持升级时不重复检查，直接返回当前状态。升级服务器的地址写在外壳里，界面不能指定。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": {
+        "type": "object",
+        "properties": { "status": { "$ref": "#/types/UpdateStatus", "description": "请求返回时的状态" } },
+        "required": ["status"]
+      },
+      "errors": []
+    },
+    "installUpdate": {
+      "description": "重启应用并使用已经下载好的新版本；只在状态为 ready 时可用。应用先走正常的退出流程（保存界面状态、停止核心），再重新启动。",
+      "params": { "type": "object", "properties": {}, "required": [] },
+      "result": { "type": "object", "properties": {}, "required": [] },
+      "errors": ["system.updateNotReady"]
+    }
+  },
+  "events": {}
+}

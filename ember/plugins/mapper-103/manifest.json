@@ -1,0 +1,34 @@
+{
+  "id": "mapper-103",
+  "name": "Mapper 103",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "FDS 转卡（mapper 103）：$8000-$FFFF 固定映射最后 4 个 8K bank；$6000-$7FFF 与 $B800-$D7FF 默认是 16K 工作 RAM 的两页，$F000 的位 4 置位后改映射 PRG ROM；这两段的写入始终写进工作 RAM；$E000 的位 3 选名称表镜像。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 103 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "wram", "kind": "ram", "size": { "header": "prgRam", "default": 16384 } }
+  ],
+  "windows": [
+    { "id": "ram-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": ["wram", "prg"], "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": -4, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$B7FF", "storage": "prg", "size": 6144, "initial": 0, "access": "r" },
+    { "id": "ram-b800", "bus": "cpu", "range": "$B800-$D7FF", "storage": ["wram", "prg"], "size": 8192, "initial": 1, "access": "rw" },
+    { "id": "prg-d800", "bus": "cpu", "range": "$D800-$DFFF", "storage": "prg", "size": 2048, "initial": 0, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "prgRamDisabled", "bits": 1, "description": "工作 RAM 是否被关闭（改映射 PRG ROM）" },
+    { "name": "prgReg", "bits": 4, "description": "$8000 写入的 PRG bank" }
+  ],
+  "nametable": "header"
+}

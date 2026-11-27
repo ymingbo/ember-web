@@ -1,0 +1,35 @@
+{
+  "id": "kaiser7037",
+  "name": "Kaiser KS-7037",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Kaiser KS-7037（mapper 307）：$8000 选寄存器、$8001 写入（不含 $A000-$BFFF）；寄存器 6、7 各选一个 8K 的 PRG 页，$6000 是 4K RAM、$7000 是 PRG 的第 16 个 4K 页、$B000 是 RAM 的第二个 4K，寄存器 2-5 的位 0 决定 4 个名称表用主板显存的哪一页。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 307 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "ram", "kind": "ram", "size": 8192 }
+  ],
+  "windows": [
+    { "id": "p-8000", "bus": "cpu", "range": "$8000-$8FFF", "storage": "prg", "size": 4096, "initial": 0, "access": "r" },
+    { "id": "p-9000", "bus": "cpu", "range": "$9000-$9FFF", "storage": "prg", "size": 4096, "initial": 1, "access": "r" },
+    { "id": "p-a000", "bus": "cpu", "range": "$A000-$AFFF", "storage": "prg", "size": 4096, "initial": -4, "access": "r" },
+    { "id": "p-b000", "bus": "cpu", "range": "$B000-$BFFF", "storage": "ram", "size": 4096, "initial": 1, "access": "rw" },
+    { "id": "p-c000", "bus": "cpu", "range": "$C000-$CFFF", "storage": "prg", "size": 4096, "initial": 0, "access": "r" },
+    { "id": "p-d000", "bus": "cpu", "range": "$D000-$DFFF", "storage": "prg", "size": 4096, "initial": 1, "access": "r" },
+    { "id": "p-e000", "bus": "cpu", "range": "$E000-$EFFF", "storage": "prg", "size": 4096, "initial": -2, "access": "r" },
+    { "id": "p-f000", "bus": "cpu", "range": "$F000-$FFFF", "storage": "prg", "size": 4096, "initial": -1, "access": "r" },
+    { "id": "ram-6000", "bus": "cpu", "range": "$6000-$6FFF", "storage": "ram", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "prg-7000", "bus": "cpu", "range": "$7000-$7FFF", "storage": "prg", "size": 4096, "initial": 15, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$9FFF", "write": true },
+    { "bus": "cpu", "range": "$C000-$FFFF", "write": true }
+  ],
+  "nametable": "custom"
+}

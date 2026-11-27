@@ -1,0 +1,29 @@
+{
+  "id": "bandai-karaoke",
+  "name": "Bandai 卡拉 OK",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Bandai 卡拉 OK 卡带（mapper 188）：$8000 起 16K 可切换，$C000 起固定为第 7 个 bank；写入值的位 4 为 1 选内置 ROM（低 3 位），为 0 选扩展 ROM（PRG 不小于 256K 时低 3 位加 8，否则 $8000-$BFFF 不映射）；位 5 选名称表镜像；有总线冲突；麦克风不支持，$6000-$7FFF 读开放总线。",
+  "host": ["fc"],
+  "busConflict": true,
+  "match": [
+    { "mapper": 188 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": 7, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$7FFF", "read": { "open": true } },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

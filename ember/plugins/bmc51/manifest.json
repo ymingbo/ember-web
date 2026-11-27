@@ -1,0 +1,32 @@
+{
+  "id": "bmc51",
+  "name": "BMC-51",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "BMC-51（mapper 51）：22-in-1 合集卡；寄存器在 $6000-$FFFF，PRG 以 8K 为单位，$6000-$7FFF 也映射 PRG ROM（没有 PRG RAM）；模式的低位为 1 时 $8000-$FFFF 是连续的 32K，否则前 16K 与后 16K 分别选；名称表在模式为 3 时水平，否则垂直。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 51 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": 3, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "bank", "bits": 4, "description": "外层 bank（4 位）" },
+    { "name": "mode", "bits": 2, "description": "模式" }
+  ],
+  "nametable": "header"
+}

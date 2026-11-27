@@ -1,0 +1,34 @@
+{
+  "id": "qls",
+  "name": "声像教学卡 QLS",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "声像教学卡（mapper 172，PRG 32K，如“声像教学”的 qls.nes）：磁带机放出声像磁带，右声道是数据线，每个下降沿向 CPU 发一次中断，$9000-$9FFF 读到累计的计时并撤销中断；$8000-$8FFF 是 1K RAM（镜像）；$C000-$FFFF 是 PRG 的后 16K；CHR 用 8K CHR RAM。",
+  "host": ["fc"],
+  "match": [{ "mapper": 172, "prgSize": 32768 }],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": 8192 } },
+    { "id": "ram", "kind": "ram", "size": 1024 }
+  ],
+  "windows": [
+    { "id": "ram", "bus": "cpu", "range": "$8000-$8FFF", "storage": "ram", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "prg-c", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": 2, "access": "r" },
+    { "id": "prg-e", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": 3, "access": "r" },
+    { "id": "chr", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$9000-$9FFF", "read": { "state": "tickCount", "releaseIrq": true } },
+    { "bus": "cpu", "range": "$A000-$B7FF", "read": { "value": 0 } }
+  ],
+  "state": [
+    { "name": "tickCount", "bits": 8, "initial": 0, "description": "累计的计时：每个下降沿加上与两次下降沿间隔成正比的数" },
+    { "name": "sampleCount", "bits": 32, "initial": 0, "description": "距上一次下降沿经过的磁带采样数（96 kHz）" }
+  ],
+  "tape": {
+    "comparator": { "low": -1000, "high": -999, "invert": true },
+    "timer": { "samples": "sampleCount", "ticks": "tickCount", "scale": [1764, 960], "irq": true }
+  },
+  "nametable": "horizontal"
+}

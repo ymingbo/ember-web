@@ -1,0 +1,30 @@
+{
+  "id": "unrom",
+  "name": "UNROM",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "UNROM（mapper 2）：$8000 起 16K 可切换，$C000 起 16K 固定为最后一个 bank；$8000-$FFFF 写入选 bank（整个写入值，超过 bank 数取模）；CHR 为 8K ROM 或 CHR RAM；子 mapper 2 时有总线冲突。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 2 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "prg-ram", "kind": "ram", "size": { "header": "prgAny", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": "last", "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" },
+    { "id": "prg-ram", "bus": "cpu", "range": "$6000-$7FFF", "storage": "prg-ram", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": { "state": "prgBank", "bank": [{ "window": "prg-8000-16k" }] } }
+  ],
+  "state": [
+    { "name": "prgBank", "bits": 8, "description": "$8000 起 16K 的 bank 号" }
+  ],
+  "nametable": "header"
+}

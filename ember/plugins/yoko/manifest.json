@@ -1,0 +1,35 @@
+{
+  "id": "yoko",
+  "name": "Yoko",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Yoko（mapper 264）：$8000-$FFFF 按地址位分出程序页、模式、IRQ、3 个 8K 程序页与 4 个 2K 图案页寄存器；$5000-$53FF 读 DIP，$5400-$5FFF 是 4 个暂存字节；IRQ 是 16 位的 CPU 周期递减计数器。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 264 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-8000", "bus": "cpu", "range": "$8000-$9FFF", "storage": "prg", "size": 8192, "initial": 0, "access": "r" },
+    { "id": "prg-a000", "bus": "cpu", "range": "$A000-$BFFF", "storage": "prg", "size": 8192, "initial": 1, "access": "r" },
+    { "id": "prg-c000", "bus": "cpu", "range": "$C000-$DFFF", "storage": "prg", "size": 8192, "initial": -2, "access": "r" },
+    { "id": "prg-e000", "bus": "cpu", "range": "$E000-$FFFF", "storage": "prg", "size": 8192, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$07FF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-0800", "bus": "ppu", "range": "$0800-$0FFF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$17FF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" },
+    { "id": "chr-1800", "bus": "ppu", "range": "$1800-$1FFF", "storage": "chr", "size": 2048, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$5000-$53FF", "read": true },
+    { "bus": "cpu", "range": "$5400-$5FFF", "read": true, "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "settings": [
+    { "key": "dip", "label": "DIP 开关", "kind": "choice", "default": "0", "description": "卡带上两个 DIP 开关的位置，读 $5000 时出现在低 2 位。", "options": [{ "value": "0", "label": "0（全部关）" },{ "value": "1", "label": "1" },{ "value": "2", "label": "2" },{ "value": "3", "label": "3（全部开）" }] }
+  ],
+  "nametable": "header"
+}

@@ -1,0 +1,39 @@
+{
+  "id": "farid-slrom",
+  "name": "Farid SLROM",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "Farid SLROM（mapper 323）：在 MMC1 之上加外层寄存器：RAM 允许且尚未锁定时，写 $6000-$7FFF 的位 6-4 选程序与图案的外层组，位 3 锁定；程序页号取低 3 位，图案页号取低 5 位。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 323 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } },
+    { "id": "save", "kind": "ram", "size": { "header": "prgNvram", "default": 8192 }, "battery": true },
+    { "id": "work", "kind": "ram", "size": { "header": "prgRam", "default": 8192 } }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$0FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "chr-1000", "bus": "ppu", "range": "$1000-$1FFF", "storage": "chr", "size": 4096, "initial": 0, "access": "rw" },
+    { "id": "ram-6000", "bus": "cpu", "range": "$6000-$7FFF", "storage": ["save", "work"], "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$6000-$7FFF", "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "state": [
+    { "name": "shiftReg", "bits": 5, "description": "串行寄存器（已经移入的位）" },
+    { "name": "shiftCount", "bits": 3, "description": "串行寄存器已写入的次数" },
+    { "name": "ctrl", "bits": 5, "description": "控制寄存器（位 0-1 镜像，位 2 固定哪个槽，位 3 PRG 模式，位 4 CHR 模式）" },
+    { "name": "chr0", "bits": 5, "description": "CHR 寄存器 0（$A000）" },
+    { "name": "chr1", "bits": 5, "description": "CHR 寄存器 1（$C000）" },
+    { "name": "prg", "bits": 5, "description": "PRG 寄存器（位 0-3 为 bank，位 4 为 RAM 禁用）" },
+    { "name": "lastChr1", "bits": 1, "description": "最近写的 CHR 寄存器是不是 $C000" }
+  ],
+  "nametable": "header"
+}

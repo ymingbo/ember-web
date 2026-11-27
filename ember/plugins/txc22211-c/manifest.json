@@ -1,0 +1,25 @@
+{
+  "id": "txc22211-c",
+  "name": "TXC 22211 C",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "TXC 22211 C（mapper 173）：TXC 芯片同 22211 A，程序固定 32K；图案页由锁存输出位 0、位 1 与芯片 Y 标志组成（图案 ROM 超过 8K 时），只有 8K 时 Y 为 0 则图案总线无映射。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 173 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "rom", "from": "file.chr", "fallback": { "kind": "ram", "size": { "header": "chrRam", "default": 8192 } } }
+  ],
+  "windows": [
+    { "id": "prg-8000-32k", "bus": "cpu", "range": "$8000-$FFFF", "storage": "prg", "size": 32768, "initial": 0, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$4020-$5FFF", "read": true, "write": true },
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "un-rom512",
+  "name": "UNROM 512",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "publisher": "Ember",
+  "description": "UNROM 512（mapper 30）：$8000-$FFFF 写入选 16K 程序页（位 4-0）、8K 图案 RAM 页（位 6-5，共 32K）与镜像位（位 7，仅子 mapper 3）；$C000 固定最后一页；带电池的闪存写入（$8000-$BFFF）不处理，不能存档。",
+  "host": ["fc"],
+  "match": [
+    { "mapper": 30 }
+  ],
+  "storage": [
+    { "id": "prg", "kind": "rom", "from": "file.prg" },
+    { "id": "chr", "kind": "ram", "size": 32768 }
+  ],
+  "windows": [
+    { "id": "prg-8000-16k", "bus": "cpu", "range": "$8000-$BFFF", "storage": "prg", "size": 16384, "initial": 0, "access": "r" },
+    { "id": "prg-c000-16k", "bus": "cpu", "range": "$C000-$FFFF", "storage": "prg", "size": 16384, "initial": -1, "access": "r" },
+    { "id": "chr-0000", "bus": "ppu", "range": "$0000-$1FFF", "storage": "chr", "size": 8192, "initial": 0, "access": "rw" }
+  ],
+  "registers": [
+    { "bus": "cpu", "range": "$8000-$FFFF", "write": true }
+  ],
+  "nametable": "header"
+}
