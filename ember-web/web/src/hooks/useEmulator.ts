@@ -131,7 +131,15 @@ export function useEmulator() {
     // 初始化软驱状态数组
     const drives: FloppyDriveState[] = [];
     for (let i = 0; i < driveCount; i++) {
-      drives.push({ index: i, inserted: false, modified: false, name: '', motor: false });
+      drives.push({
+        index: i,
+        inserted: false,
+        modified: false,
+        name: '',
+        motor: false,
+        writeProtected: false,
+        size: 0,
+      });
     }
     floppyStatesRef.current = drives;
     setFloppyStates(drives);
@@ -284,8 +292,15 @@ export function useEmulator() {
       for (let i = 0; i < driveCount; i++) {
         const inserted = instance.floppyInserted(i);
         const modified = instance.floppyModified(i);
-        if (newStates[i]?.inserted !== inserted || newStates[i]?.modified !== modified) {
-          newStates[i] = { ...newStates[i], index: i, inserted, modified };
+        // 写保护可能在界面之外被改（故障注入清全部故障时会取消写保护），
+        // 所以每轮都读一次，不能只在插入时记下来。
+        const writeProtected = inserted ? instance.floppyWriteProtected(i) : false;
+        if (
+          newStates[i]?.inserted !== inserted ||
+          newStates[i]?.modified !== modified ||
+          newStates[i]?.writeProtected !== writeProtected
+        ) {
+          newStates[i] = { ...newStates[i], index: i, inserted, modified, writeProtected };
           floppyChanged = true;
         }
       }
@@ -529,38 +544,81 @@ export function useEmulator() {
   // ------------------------------------------------------------------
   // 软驱操作
   // ------------------------------------------------------------------
-  const floppyInsert = useCallback(async (
-    index: number,
-    file: File,
-    writeProtected = false,
-  ): Promise<boolean> => {
-    const instance = instanceRef.current;
-    const Module = getModule();
-    if (!instance || !Module) return false;
 
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
+  /** 把一段镜像字节插进软驱（文件导入和新建空白盘共用这条路径）。 */
+  const insertFloppyData = useCallback(
+    (index: number, data: Uint8Array, name: string, writeProtected: boolean): boolean => {
+      const instance = instanceRef.current;
+      const Module = getModule();
+      if (!instance || !Module) return false;
 
       const addr = instance.allocBuffer(data.length);
       if (addr === 0) return false;
 
       Module.HEAPU8.set(data, addr);
-      const result = instance.floppyInsert(index, addr, data.length, writeProtected, file.name);
+      const result = instance.floppyInsert(index, addr, data.length, writeProtected, name);
       instance.freeBuffer(addr);
 
-      if (result === 0) {
-        // 更新状态
-        const newStates = [...floppyStatesRef.current];
-        newStates[index] = { index, inserted: true, modified: false, name: file.name, motor: floppyMotorRef.current[index] === true };
+      if (result !== 0) return false;
+
+      const newStates = [...floppyStatesRef.current];
+      newStates[index] = {
+        index,
+        inserted: true,
+        modified: false,
+        name,
+        motor: floppyMotorRef.current[index] === true,
+        writeProtected,
+        size: data.length,
+      };
+      floppyStatesRef.current = newStates;
+      setFloppyStates(newStates);
+      return true;
+    },
+    [],
+  );
+
+  const floppyInsert = useCallback(
+    async (index: number, file: File, writeProtected = false): Promise<boolean> => {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        return insertFloppyData(index, new Uint8Array(arrayBuffer), file.name, writeProtected);
+      } catch {
+        return false;
+      }
+    },
+    [insertFloppyData],
+  );
+
+  /**
+   * 新建一张空白软盘插进驱动器。
+   *
+   * 镜像就是全零字节 —— 格式由核心按镜像大小反推（见上游 formatFor）：
+   * 737280 字节 → 80 磁道 / 双面 / 每道 9 扇区 / 250kbps（720K）
+   * 1474560 字节 → 80 磁道 / 双面 / 每道 18 扇区 / 500kbps（1440K）
+   * 空白盘不含文件系统，需要在学习机里执行格式化命令后才能存文件。
+   */
+  const floppyInsertBlank = useCallback(
+    (index: number, sizeBytes: number, name: string, writeProtected = false): boolean =>
+      insertFloppyData(index, new Uint8Array(sizeBytes), name, writeProtected),
+    [insertFloppyData],
+  );
+
+  /** 设置或取消盘片写保护；核心的 FDC 会在写数据、格式化时拦截。 */
+  const floppySetWriteProtected = useCallback((index: number, protect: boolean): boolean => {
+    const instance = instanceRef.current;
+    if (!instance) return false;
+    const result = instance.floppySetWriteProtected(index, protect);
+    if (result === 0) {
+      const newStates = [...floppyStatesRef.current];
+      if (newStates[index]) {
+        newStates[index] = { ...newStates[index], writeProtected: protect };
         floppyStatesRef.current = newStates;
         setFloppyStates(newStates);
-        return true;
       }
-      return false;
-    } catch {
-      return false;
+      return true;
     }
+    return false;
   }, []);
 
   const floppyEject = useCallback((index: number): boolean => {
@@ -570,7 +628,15 @@ export function useEmulator() {
     const result = instance.floppyEject(index);
     if (result === 0) {
       const newStates = [...floppyStatesRef.current];
-      newStates[index] = { index, inserted: false, modified: false, name: '', motor: false };
+      newStates[index] = {
+        index,
+        inserted: false,
+        modified: false,
+        name: '',
+        motor: false,
+        writeProtected: false,
+        size: 0,
+      };
       floppyStatesRef.current = newStates;
       setFloppyStates(newStates);
       return true;
@@ -757,6 +823,8 @@ export function useEmulator() {
     floppyStates,
     floppyMotorRef,
     floppyInsert,
+    floppyInsertBlank,
+    floppySetWriteProtected,
     floppyEject,
     floppySaveImage,
     // 打印机

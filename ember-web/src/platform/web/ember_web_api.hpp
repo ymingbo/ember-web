@@ -254,6 +254,23 @@ int ember_floppy_modified(EmberEmulator* emu, unsigned index);
  */
 const uint8_t* ember_floppy_get_image(EmberEmulator* emu, unsigned index, size_t* out_size);
 
+/**
+ * 设置或取消盘片的写保护。
+ * @param index 软驱编号。
+ * @param protect 非 0 表示写保护。
+ * @return 0 成功；-1 emu 无效；-2 没有这个软驱。
+ * @remarks 写保护由 FDC 控制器在执行写数据、格式化命令时拦截，学习机会收到
+ *          「不可写」错误（ST1 的 NOT_WRITEABLE 位），与真机效果一致。
+ */
+int ember_floppy_set_write_protected(EmberEmulator* emu, unsigned index, int protect);
+
+/**
+ * 读取盘片的写保护状态。
+ * @param index 软驱编号。
+ * @return 1 写保护；0 未写保护（或没有这个软驱）。
+ */
+int ember_floppy_write_protected(EmberEmulator* emu, unsigned index);
+
 // ============================================================================
 // 打印机
 // ============================================================================

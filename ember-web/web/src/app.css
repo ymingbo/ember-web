@@ -766,6 +766,34 @@ input[type='range'] {
   color: #484f58;
 }
 
+/* 写保护勾选框：跟真机磁盘角上的滑块对应，勾上后学习机写不进去。 */
+.periph-wp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #8b949e;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.periph-wp:hover {
+  color: #c9d1d9;
+}
+
+/* 勾上时整行文字变警示色，一眼看出这张盘是只读的。 */
+.periph-wp:has(input:checked) {
+  color: #d29922;
+}
+
+.periph-wp input {
+  margin: 0;
+  cursor: pointer;
+  accent-color: #d29922;
+}
+
 .periph-head {
   display: flex;
   align-items: center;

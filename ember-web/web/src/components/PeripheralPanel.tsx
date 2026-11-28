@@ -11,8 +11,12 @@ interface PeripheralPanelProps {
    */
   floppyMotorRef: React.MutableRefObject<boolean[]>;
   onFloppyInsert: (index: number, file: File, writeProtected?: boolean) => Promise<boolean>;
+  /** 新建空白软盘插进驱动器：sizeBytes 决定格式（737280=720K，1474560=1440K）。 */
+  onFloppyInsertBlank: (index: number, sizeBytes: number, name: string) => boolean;
   onFloppyEject: (index: number) => boolean;
   onFloppySave: (index: number) => Uint8Array | null;
+  /** 设置或取消写保护。核心的 FDC 会在写数据、格式化命令时拦截。 */
+  onFloppyWriteProtect: (index: number, protect: boolean) => boolean;
   // 打印机
   hasPrinter: boolean;
   printerPages: number;
@@ -53,6 +57,18 @@ function FloppyLed({ motorRef, index }: { motorRef: React.MutableRefObject<boole
 }
 
 /**
+ * 新建空白盘用的格式。
+ *
+ * 固定 1.44MB —— 学习机自己会按它支持的格式重新格式化，界面上选大小没有意义，
+ * 选错了反而让人以为结果会不一样。
+ *
+ * 1474560 字节对应上游 formatFor 的 80 磁道 / 双面 / 每道 18 扇区 / 500kbps。
+ * 这个字节数必须与上游 case 完全对上，否则核心按 1.44MB 兜底，格式与标称不符。
+ */
+const BLANK_FLOPPY_BYTES = 1474560;
+const BLANK_FLOPPY_NAME = 'blank-disk.img';
+
+/**
  * 外设控制面板：软驱、打印机、磁带机。
  * 仅在对应外设可用时显示对应区块。
  */
@@ -61,8 +77,10 @@ export function PeripheralPanel({
   floppyStates,
   floppyMotorRef,
   onFloppyInsert,
+  onFloppyInsertBlank,
   onFloppyEject,
   onFloppySave,
+  onFloppyWriteProtect,
   hasPrinter,
   printerPages,
   onGetPrinterPage,
@@ -111,6 +129,18 @@ export function PeripheralPanel({
     a.download = name;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  /**
+   * 新建空白软盘：固定 1.44MB 的全零镜像。
+   *
+   * 格式不写死在镜像里，由核心按字节数反推（上游 formatFor）：
+   *   1474560 → 80 磁道 / 双面 / 每道 18 扇区 / 500kbps
+   * 空盘没有文件系统，学习机会自己格式化 —— 它按自己支持的格式来，
+   * 所以界面上不需要选大小。
+   */
+  const handleBlankFloppy = (index: number) => {
+    onFloppyInsertBlank(index, BLANK_FLOPPY_BYTES, BLANK_FLOPPY_NAME);
   };
 
   // ------------------------------------------------------------------
@@ -192,6 +222,14 @@ export function PeripheralPanel({
                       {st.name}
                       {st.modified && <span className="periph-modified">（已修改）</span>}
                     </span>
+                    <label className="periph-wp" title="写保护：勾上后学习机写不进这张盘，等同真机磁盘角上的滑块拨到保护位置">
+                      <input
+                        type="checkbox"
+                        checked={st.writeProtected ?? false}
+                        onChange={(e) => onFloppyWriteProtect?.(i, e.target.checked)}
+                      />
+                      写保护
+                    </label>
                     {st.modified && (
                       <button
                         className={btn('warn')}
@@ -215,6 +253,13 @@ export function PeripheralPanel({
                       onClick={() => fileInputRefs.current[i]?.click()}
                     >
                       插入
+                    </button>
+                    <button
+                      className={btn('primary')}
+                      onClick={() => handleBlankFloppy(i)}
+                      title="插入一张 1.44MB 空白盘；学习机会自己格式化，之后就能存文件"
+                    >
+                      新建空白盘
                     </button>
                   </>
                 )}

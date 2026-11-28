@@ -146,6 +146,15 @@ export interface EmberWasmInstance {
    */
   floppyMotorRunning(index: number): boolean;
   /**
+   * 设置或取消盘片的写保护。
+   * 写保护由 FDC 控制器在写数据、格式化命令时拦截，学习机会收到「不可写」错误，
+   * 与真机磁盘角上拨到写保护位置的效果一致。
+   * @return 0 成功，非 0 失败
+   */
+  floppySetWriteProtected(index: number, protect: boolean): number;
+  /** 盘片是否写保护 */
+  floppyWriteProtected(index: number): boolean;
+  /**
    * 获取盘片镜像数据（用于保存到本地）。
    * 尺寸写在 lastImageSize 属性里（Embind 不支持引用出参）。
    * @param index 软驱编号
@@ -251,6 +260,10 @@ export interface FloppyDriveState {
   name: string;
   /** 马达是否在转：真机的读写灯跟马达同亮同灭。 */
   motor: boolean;
+  /** 盘片是否写保护：真机磁盘角上的滑块，拨到保护位置后学习机写不进去。 */
+  writeProtected: boolean;
+  /** 镜像大小（字节）；没有盘片时为 0。用来判断是 720K 还是 1440K。 */
+  size: number;
 }
 
 /** 打印机页信息 */

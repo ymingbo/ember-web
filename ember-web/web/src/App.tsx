@@ -95,12 +95,15 @@ function useViewportHeight() {
    用来区分「给用户测的第几版」，与仓库 tag 互不干扰。 */
 
 /** 对外发布版本号 —— 跟 git tag 一致，界面显示的就是这个。只在推仓库时改。 */
-const RELEASE_VERSION: string = '1.0.2';
+const RELEASE_VERSION: string = '1.0.3';
 
 /** 工作区迭代号 —— 每次打包给用户测就 +1。不显示在界面上。
     导出是为了让打包脚本（package.py）能读出来写进使用说明，
-    界面上不引用它，用户看到的永远是发布号。 */
-export const WORK_VERSION: string = '1.0.8';
+    界面上不引用它，用户看到的永远是发布号。
+
+    沿用原开发工作区那条线（2.53.x → 2.59.0）的编号格式，不从 1.0.x 重起，
+    这样内部迭代的历史是连续的，不会出现两套号对不上。 */
+export const WORK_VERSION: string = '2.60.1';
 
 /**
  * 内置机型 ROM —— 点一下直接加载开机。
@@ -234,6 +237,8 @@ export default function App() {
     floppyStates,
     floppyMotorRef,
     floppyInsert,
+    floppyInsertBlank,
+    floppySetWriteProtected,
     floppyEject,
     floppySaveImage,
     printerPages,
@@ -685,8 +690,10 @@ export default function App() {
               floppyStates={floppyStates}
               floppyMotorRef={floppyMotorRef}
               onFloppyInsert={floppyInsert}
+              onFloppyInsertBlank={floppyInsertBlank}
               onFloppyEject={floppyEject}
               onFloppySave={floppySaveImage}
+              onFloppyWriteProtect={floppySetWriteProtected}
               hasPrinter={state.hasPrinter}
               printerPages={printerPages}
               onGetPrinterPage={getPrinterLastPage}

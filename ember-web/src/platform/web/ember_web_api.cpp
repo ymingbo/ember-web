@@ -564,6 +564,21 @@ const uint8_t* ember_floppy_get_image(EmberEmulator* emu, unsigned index, size_t
   return img.data();
 }
 
+int ember_floppy_set_write_protected(EmberEmulator* emu, unsigned index, int protect) {
+  if (!emu || !emu->machine) return -1;
+  auto* drive = emu->machine->floppyDrive(index);
+  if (!drive) return -2;
+  drive->setWriteProtected(protect != 0);
+  return 0;
+}
+
+int ember_floppy_write_protected(EmberEmulator* emu, unsigned index) {
+  if (!emu || !emu->machine) return 0;
+  auto* drive = emu->machine->floppyDrive(index);
+  if (!drive) return 0;
+  return drive->writeProtected() ? 1 : 0;
+}
+
 // ============================================================================
 // 打印机
 // ============================================================================

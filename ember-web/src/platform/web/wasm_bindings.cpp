@@ -158,6 +158,14 @@ class EmberWasm {
     lastImageSize = size;
     return data ? static_cast<WasmAddress>(reinterpret_cast<uintptr_t>(data)) : 0;
   }
+  /** 设置或取消盘片写保护；写保护由 FDC 在执行写命令时拦截。 */
+  int floppySetWriteProtected(unsigned index, bool protect) {
+    return emu_ ? ember_floppy_set_write_protected(emu_, index, protect ? 1 : 0) : -1;
+  }
+  /** 盘片是否写保护。 */
+  bool floppyWriteProtected(unsigned index) const {
+    return emu_ && ember_floppy_write_protected(emu_, index) != 0;
+  }
 
   // ====================================================================
   // 打印机
@@ -251,6 +259,8 @@ EMSCRIPTEN_BINDINGS(ember_wasm) {
       .function("floppyModified", &EmberWasm::floppyModified)
       .function("floppyMotorRunning", &EmberWasm::floppyMotorRunning)
       .function("floppyGetImage", &EmberWasm::floppyGetImage)
+      .function("floppySetWriteProtected", &EmberWasm::floppySetWriteProtected)
+      .function("floppyWriteProtected", &EmberWasm::floppyWriteProtected)
       // 打印机
       .function("hasPrinter", &EmberWasm::hasPrinter)
       .function("printerPagesOutput", &EmberWasm::printerPagesOutput)
