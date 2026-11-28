@@ -9,6 +9,9 @@ interface AboutDialogProps {
 /** 上游项目地址。移植声明必须指向这个仓库，不要改。 */
 const UPSTREAM_URL = 'https://github.com/sungbindev/famiclone/tree/master/ember';
 
+/** 本项目开源地址。 */
+const PROJECT_URL = 'https://github.com/ymingbo/ember-web';
+
 /**
  * 关于窗口 —— 显示当前版本号和上游移植声明。
  *
@@ -44,6 +47,20 @@ export function AboutDialog({ open, onClose, version }: AboutDialogProps) {
           <div className="about-row">
             <span className="about-label">软件版本</span>
             <span className="about-value about-ver">v{version}</span>
+          </div>
+
+          <div className="about-row">
+            <span className="about-label">开源地址</span>
+            <span className="about-value">
+              <a
+                className="about-link about-link-inline"
+                href={PROJECT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                github.com/ymingbo/ember-web
+              </a>
+            </span>
           </div>
 
           <p className="about-note">

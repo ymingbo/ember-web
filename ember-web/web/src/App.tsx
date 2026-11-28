@@ -25,6 +25,9 @@ function useViewportHeight() {
 
     /* 记录「没有软键盘时」的视口高度，作为基准。 */
     let baseHeight = vv ? vv.height : window.innerHeight;
+    /* 同步记录基准宽度。键盘弹出只改高度、不改宽度；
+       横竖屏旋转两个方向都变。靠这个区分「键盘」和「旋转」。 */
+    let baseWidth = vv ? vv.width : window.innerWidth;
 
     const apply = () => {
       const root = document.documentElement;
@@ -35,11 +38,20 @@ function useViewportHeight() {
       }
 
       const h = vv.height;
+      const w = vv.width;
 
       /* 视口变高（键盘收起/横竖屏切换）时刷新基准；
-         键盘弹出时 vv.height 变小，基准不动，只算差值。 */
-      if (h >= baseHeight - 1) {
+         键盘弹出时 vv.height 变小，基准不动，只算差值。
+
+         横竖屏旋转会让视口**变矮**（844 → 390），旧写法只看 h >= baseHeight
+         就把它当成键盘弹出，baseHeight 卡在竖屏的 844 不更新，--app-h 一直
+         写 844px —— body 比视口高一倍，画面下半截溢出屏幕。
+
+         宽度变化是旋转的可靠信号（键盘不改宽度），所以宽度变了就直接重设基准。 */
+      const widthChanged = Math.abs(w - baseWidth) > 1;
+      if (h >= baseHeight - 1 || widthChanged) {
         baseHeight = h;
+        baseWidth = w;
       }
 
       /* --app-h 保持**基准高度**，页面高度不变 —— 画面不会被压缩，
@@ -70,8 +82,25 @@ function useViewportHeight() {
   }, []);
 }
 
-/** 版本号。改这里就等于改界面右下角和自检条上的版本。 */
-const APP_VERSION = '1.0.1';
+/* ------------------------------------------------------------------ 版本号
+
+   两套版本号，用途不同，不要混用：
+
+     RELEASE_VERSION  对外发布版本号。**只在正式推送到仓库 / 发 Release 时 +1**，
+                      跟着 git tag 走，也是界面上显示的那个。
+     WORK_VERSION     工作区迭代号。每打包一次给用户的内部测试版就 +1，
+                      只在本地和给用户的测试包说明里用，不上界面、不推仓库。
+
+   推送仓库时只改 RELEASE_VERSION 一处；WORK_VERSION 继续往上累加，
+   用来区分「给用户测的第几版」，与仓库 tag 互不干扰。 */
+
+/** 对外发布版本号 —— 跟 git tag 一致，界面显示的就是这个。只在推仓库时改。 */
+const RELEASE_VERSION: string = '1.0.2';
+
+/** 工作区迭代号 —— 每次打包给用户测就 +1。不显示在界面上。
+    导出是为了让打包脚本（package.py）能读出来写进使用说明，
+    界面上不引用它，用户看到的永远是发布号。 */
+export const WORK_VERSION: string = '1.0.8';
 
 /**
  * 内置机型 ROM —— 点一下直接加载开机。
@@ -233,6 +262,32 @@ export default function App() {
   const [showVirtualKeyboard, setShowVirtualKeyboard] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
+  /* 是否需要虚拟键盘（= 触屏设备或窄窗口）。
+     桌面浏览器有实体键盘，顶栏那个「键盘」按钮纯属多余，隐藏掉。
+     判断用「触点能力 or 窗口宽度」，不用 CSS 的 pointer 媒体特性 ——
+     无头浏览器和部分安卓 WebView 里 pointer: fine / coarse 双双不匹配，
+     靠它判断会失效。 */
+  const [kbCapable, setKbCapable] = useState(false);
+  useEffect(() => {
+    const compute = () => {
+      const touch =
+        (navigator.maxTouchPoints ?? 0) > 0 ||
+        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
+      const narrow = window.innerWidth < 820;
+      const on = touch || narrow;
+      setKbCapable(on);
+      /* 同步给 CSS，用来隐藏按钮 —— 首帧渲染前就能生效，避免闪一下 */
+      document.documentElement.dataset.kbCapable = on ? '1' : '0';
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
+  }, []);
+
   /* 虚拟键盘锚点的引用。打开开关时组件自己会 focus，
      这里留着是为了将来需要外部唤起时可以直接调。 */
   const vkbRef = useRef<VirtualKeyboardHandle | null>(null);
@@ -258,31 +313,63 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
-  /* 面板展开后的真实高度写进 --panel-open-h。
-     max-height 若过渡到 62vh，而内容只有 400 多像素，max-height 一旦越过
-     内容高度，元素高度就被内容卡住 —— 过渡的后半段看不出变化，观感是
-     「一下子弹到位」。用实测高度做终点，动画才走满全程。
-     内容高度会变（切换机型后外设列表长短不同），所以用 ResizeObserver 跟踪。 */
+  /* 面板展开高度的自适应上限。
+
+     量出「电视机下沿 → 把手上沿」之间的空隙：
+       · 空隙宽裕 → 面板只长到空隙里，不遮住电视机
+       · 空隙紧张（宽屏横屏、画面很高）→ 不设限，按老逻辑向上覆盖画面
+
+     判断必须在布局完成、面板内容渲染之后做 —— 面板高度取决于机型外设项数，
+     所以用 ResizeObserver 跟画面区和内容区，窗口尺寸/方向变了也重算。 */
   const panelBodyRef = useRef<HTMLDivElement | null>(null);
+  const screenAreaRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    const el = panelBodyRef.current;
-    if (!el) return;
+    const area = screenAreaRef.current;
+    const body = panelBodyRef.current;
+    if (!area || !body) return;
+
+    /* 一行约 44px（面板里最小的按钮/开关行）。不到 3 行说明空隙太小，
+       硬塞进去只会挤成一坨，不如让它盖住画面。 */
+    const MIN_USEFUL = 44 * 3;
+
     const apply = () => {
-      /* 展开态高度 = 把手 24px + 内容区自然高度，上限仍受 62vh 约束 */
-      const bodyH = el.scrollHeight;
-      const cap = Math.round(window.innerHeight * 0.62);
-      const h = Math.min(bodyH + 24, cap);
-      document.documentElement.style.setProperty('--panel-open-h', h + 'px');
+      const canvas = area.querySelector('canvas');
+      const handle = document.querySelector('.drawer-handle');
+      if (!canvas || !handle) return;
+
+      const cRect = canvas.getBoundingClientRect();
+      const hRect = handle.getBoundingClientRect();
+
+      /* 画面下沿 → 把手上沿，就是可以安全占用的空隙 */
+      const gap = hRect.top - cRect.bottom;
+      /* 面板内容自然高度，上限仍是 62vh */
+      const need = Math.min(body.scrollHeight, Math.round(window.innerHeight * 0.62));
+
+      if (gap >= MIN_USEFUL) {
+        /* 空隙宽裕：面板最多长到空隙那么高，不碰画面 */
+        const limit = Math.min(gap, need);
+        document.documentElement.style.setProperty('--panel-max-h', Math.floor(limit) + 'px');
+        document.documentElement.dataset.panelMode = 'gap';
+      } else {
+        /* 空隙紧张：撤掉限制，CSS 退回 62vh，允许向上覆盖画面 */
+        document.documentElement.style.removeProperty('--panel-max-h');
+        document.documentElement.dataset.panelMode = 'overlay';
+      }
     };
+
     apply();
     const ro = new ResizeObserver(apply);
-    ro.observe(el);
+    ro.observe(area);
+    ro.observe(body);
     window.addEventListener('resize', apply);
+    window.addEventListener('orientationchange', apply);
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', apply);
+      window.removeEventListener('orientationchange', apply);
     };
   }, []);
+
   /* 窄屏时侧栏是抽屉，默认**展开**——否则用户看不到「选择 ROM」按钮，
      会以为界面缺东西。桌面端这个状态无影响（侧栏本来常驻）。
      手柄默认关闭，所以面板不需要为它让位。 */
@@ -385,9 +472,9 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">▚</span>
+          <img className="brand-mark" src="./brand-mark.png" alt="" />
           <span className="brand-name">Ember FC</span>
-          <span className="brand-ver">v{APP_VERSION}</span>
+          <span className="brand-ver">v{RELEASE_VERSION}</span>
           {/* 学习机标记：宽屏显示文字，窄屏只留图标（CSS 切换）。
               手机上顶栏空间不够，文字会把它挤到换行。 */}
           {state.isLearningMachine && (
@@ -417,8 +504,13 @@ export default function App() {
           )}
           {/* 虚拟键盘开关：只在学习机机型出现（FC 卡带没有键盘）。
               放在顶栏而不是底部——底部会占掉画面高度，正是「键盘把画面
-              顶出屏幕」的来源。 */}
-          {state.isLearningMachine && running && (
+              顶出屏幕」的来源。
+
+              只在需要软键盘的设备上显示：桌面浏览器有实体键盘，这个按钮
+              纯属多余。判断用「触点数 or 窄窗口」——纯 CSS 的 pointer 特性
+              在部分环境（无头浏览器、某些安卓 WebView）两个值都不匹配，
+              靠它隐藏会失效。 */}
+          {state.isLearningMachine && running && kbCapable && (
             <button
               type="button"
               className={`topbar-kb ${showVirtualKeyboard ? 'on' : ''}`}
@@ -451,7 +543,7 @@ export default function App() {
       )}
 
       <main className="stage">
-        <section id="screen-area" className={drawerOpen ? 'screen-area drawer-open' : 'screen-area'}>
+        <section id="screen-area" className="screen-area" ref={screenAreaRef}>
           <EmulatorCanvas
             getFramebuffer={getFramebuffer}
             width={256}
@@ -470,21 +562,9 @@ export default function App() {
             把手必须在 aside 外面 —— 放里面会跟着面板一起滑出屏幕，
             收起后就再也点不到，没法把面板拉回来。 */}
         <div className={drawerOpen ? 'drawer open' : 'drawer'}>
-        {/* 把手是面板自己的第一行，和内容同属一个盒子。
-            这样展开/收起时只有「面板高度」一个量在变，把手自然跟着顶端走，
-            不需要任何位移同步。收起时面板高度收缩到只剩这一行，
-            把手仍然留在屏幕上可点，不会跟着内容滑出屏幕点不回来。 */}
-        <aside className={drawerOpen ? 'sidebar open' : 'sidebar'}>
-          <button
-            className="drawer-handle"
-            onClick={() => setDrawerOpen((v) => !v)}
-            aria-label={drawerOpen ? '收起面板' : '展开面板'}
-            aria-expanded={drawerOpen}
-            type="button"
-          >
-            <span className="drawer-handle-bar" />
-          </button>
-
+        <aside
+          className={drawerOpen ? 'sidebar open' : 'sidebar'}
+        >
           <div className="sidebar-body" ref={panelBodyRef}>
           <div className="panel">
             <h3 className="panel-title">渲染</h3>
@@ -655,6 +735,19 @@ export default function App() {
           </div>
           </div>
         </aside>
+        {/* 把手固定贴在容器底部，面板是绝对定位、叠在它上方单独滑动。
+            把手的 DOM 位置和视觉位置都不参与面板的动画，所以永远不会瞬移，
+            也不需要任何同步代码。
+            用真实按钮而不是伪元素 —— 伪元素收不到点击，手指按上去会被当成画面触摸。 */}
+        <button
+          className="drawer-handle"
+          onClick={() => setDrawerOpen((v) => !v)}
+          aria-label={drawerOpen ? '收起面板' : '展开面板'}
+          aria-expanded={drawerOpen}
+          type="button"
+        >
+          <span className="drawer-handle-bar" />
+        </button>
         </div>
       </main>
 
@@ -711,7 +804,7 @@ export default function App() {
       <AboutDialog
         open={showAbout}
         onClose={() => setShowAbout(false)}
-        version={APP_VERSION}
+        version={RELEASE_VERSION}
       />
     </div>
   );

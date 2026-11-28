@@ -94,9 +94,13 @@ body {
 }
 
 .brand-mark {
-  color: #58a6ff;
-  font-size: 15px;
-  line-height: 1;
+  /* 顶栏 logo：用图片而不是字符，尺寸固定住避免撑高顶栏 */
+  width: 18px;
+  height: 18px;
+  display: block;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: 0 0 auto;
 }
 
 .brand-name {
@@ -921,6 +925,14 @@ input[type='range'] {
   background: rgba(56, 139, 253, 0.12);
 }
 
+/* 虚拟键盘按钮只对触屏设备有意义 —— 它唤起的是系统软键盘。
+   桌面端有实体键盘，这个按钮是纯多余。
+   这里按 App 算出的 --kb-capable 隐藏：App 里用「触点数 or 宽度<820」
+   判断，比纯 CSS 的 pointer: fine 可靠（部分环境两个 pointer 值都不匹配）。 */
+html:not([data-kb-capable="1"]) .topbar-kb {
+  display: none;
+}
+
 /* ---- 顶栏「关于」按钮 ---- */
 .topbar-about {
   padding: 3px 10px;
@@ -1130,16 +1142,12 @@ input[type='range'] {
     padding: 8px;
     align-items: flex-start;
     justify-content: center;
-    /* 下栏展开时把画面上推，避免被浮层压住下半部分 */
-    transition: padding-bottom 0.26s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  /* 下栏展开时，给画面区留出下栏的高度，画面整体上移、不被遮挡。
-     下栏 max-height 是 62vh，这里让出 40vh —— 既保证不挡画面主体，
-     又不至于把画面压得太小（留 40vh 给画面 + 顶栏）。 */
-  .stage:has(.sidebar.open) .screen-area {
-    padding-bottom: 40vh;
-  }
+  /* 面板是浮层，展开时直接盖在画面上，不挤压画面高度。
+     旧写法在这里给 .screen-area 加 padding-bottom: 40vh 把画面上推避让，
+     结果展开面板时画面明显缩小 —— 而面板本就是覆盖层，遮住是它该有的行为，
+     没必要为了不遮挡牺牲画面尺寸。 */
 
   /* ---- 窄屏：右侧栏变**下栏**，从底部滑出 ----
      手机上从右侧滑出会挡住画面主体，而且横向空间本来就紧。
@@ -1166,22 +1174,24 @@ input[type='range'] {
     pointer-events: none;
   }
 
-  /* 面板自己就是抽屉：把手是它的第一行，内容装在 .sidebar-body 里。
-     展开/收起只改「高度」这一个量，把手跟着顶端自然移动 ——
-     不需要任何位移同步，也不会出现把手瞬移。 */
+  /* 面板是绝对定位层，叠在把手之上，收起时整体滑到容器下方之外。
+     动画只用 transform —— 只有 transform / opacity 能在合成层上跑，
+     不触发重排重绘；之前用 max-height，每帧都要重算布局，手机上必掉帧。 */
   .sidebar {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* 底部对齐到把手上沿：面板从把手下面滑出来，展开时不压住把手 */
+    bottom: 24px;
     display: flex;
     flex-direction: column;
     width: 100%;
     max-width: 100%;
     /* 桌面端的固定宽度在这里必须撤掉，否则手机上抽屉会被撑到 280px 而不是满宽 */
     min-width: 0;
+    /* 高度由内容决定，上限 62vh */
     max-height: 62vh;
-    pointer-events: auto;
+    pointer-events: none;
     padding: 0;
     border-left: none;
     /* 上沿的圆角和边框归把手那条，避免叠出两道线两层圆角 */
@@ -1193,20 +1203,28 @@ input[type='range'] {
     background: rgba(22, 27, 34, 0.72);
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
-    transition: max-height 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    /* 收起：整体位移到自身高度之外（+ 一点余量），完全滑出容器 */
+    transform: translateY(calc(100% + 8px));
+    will-change: transform;
+    /* 曲线：cubic-bezier(0.32, 0.72, 0, 1) 起步快、收尾长缓，
+       比 ease-out 更贴手；收起 0.32s 利落，展开 0.42s 稍慢更稳重。 */
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+                opacity 0.24s ease;
+    opacity: 0;
     z-index: 20;
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.7);
-    /* 收起时高度收缩到只剩把手那一行，内容被裁掉。
-       用 max-height 而不是 height：展开态的高度由内容决定（不同机型外设项数不同），
-       收起态写死 24px，两者之间做过渡即可。 */
-    max-height: 24px;
   }
 
   .sidebar.open {
-    /* 展开终点用实测高度（--panel-open-h，由 App 写入）；
-       实测值还没写进来时退回 62vh，保证首帧不会塌成 0。 */
-    max-height: var(--panel-open-h, 62vh);
+    transform: translateY(0);
+    opacity: 1;
     pointer-events: auto;
+    transition-duration: 0.42s, 0.28s;
+    /* 展开高度上限由 App 实测决定（--panel-max-h）：
+         · 画面下方空隙宽裕 → 只长到空隙里，不盖住电视机
+         · 空隙紧张 → 变量被移除，退回默认的 62vh，向上覆盖画面
+       默认值是「变量未定义时」的兜底，所以写在 var() 的第二参数上。 */
+    max-height: var(--panel-max-h, 62vh);
   }
 
   /* 内容区：收起时不可见，避免高度过渡过程中内容从把手下面漏出来。 */
@@ -1223,10 +1241,9 @@ input[type='range'] {
     transition: opacity 0.18s ease;
   }
 
-  /* 下栏把手：面板的第一行，永远可见、可点。
-     它在面板这个 flex 列里是 flex:0 0 auto，面板高度变化时它始终贴在最上面，
-     所以展开/收起时它跟着面板顶端一起走，不需要任何独立的位移动画。
-     收起态面板高度 = 24px，正好只有它这一行，仍然留在屏幕上可以点回来。
+  /* 下栏把手：固定在容器底部的独立一行，永远可见、可点。
+     它不在面板里，完全不受面板动画影响 —— 位置从头到尾不动，
+     所以不存在「把手瞬移」的问题，也不需要任何同步代码。
      用真实按钮而不是伪元素 —— 伪元素收不到点击，手指按上去会被当成画面触摸。 */
   .drawer-handle {
     display: flex;
@@ -1249,6 +1266,7 @@ input[type='range'] {
     touch-action: none;
     pointer-events: auto;
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.7);
+    /* 面板滑动时把手没有任何位移，不需要 transition */
   }
 
 
